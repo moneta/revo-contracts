@@ -2849,7 +2849,6 @@ object "Bootloader" {
             function l1MessengerPublishingCall() {
                 let ptr := OPERATOR_PROVIDED_L1_MESSENGER_PUBDATA_BEGIN_BYTE()
                 debugLog("Publishing batch data to L1", 0)
-
                 setHook(VM_HOOK_PUBDATA_REQUESTED())
 
                 // First slot (only last 4 bytes) -- selector
@@ -3360,7 +3359,6 @@ object "Bootloader" {
                         assertEq(iseoa, true, "Only EIP-712 can use non-EOA")
                         <!-- @endif -->
 
-                        <!-- @endif -->
                         <!-- @endif -->
 
                         <!-- @if BOOTLOADER_TYPE=='proved_batch' -->
