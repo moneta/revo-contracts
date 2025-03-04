@@ -127,6 +127,56 @@ contract ExecutorFacet is ZKChainBase, IExecutor {
         }
     }
 
+    function _commitOneZKOS(
+        StoredBatchInfo memory _previousBatch,
+        CommitBatchInfoZKOS memory _newBatch
+    ) internal returns (StoredBatchInfo memory storedBatchInfo) {
+        // only commit next batch
+        if (_newBatch.batchNumber != _previousBatch.batchNumber + 1) {
+            revert BatchNumberMismatch(_previousBatch.batchNumber + 1, _newBatch.batchNumber);
+        }
+        // we are ignoring the result, as state diffs are validated on l2, and we don't support blobs with ZK OS
+        // TODO: make sure that ZK OS can't be used with blobs
+        L1DAValidatorOutput memory daOutput = IL1DAValidator(s.l1DAValidator).checkDA({
+            _chainId: s.chainId,
+            _batchNumber: uint256(_newBatch.batchNumber),
+            _l2DAValidatorOutputHash: _newBatch.l2DAValidatorOutputHash,
+            _operatorDAInput: _newBatch.operatorDAInput,
+            _maxBlobsSupported: TOTAL_BLOBS_IN_COMMITMENT
+        });
+
+        // validate block number
+        require(_previousBatch.lastBlockNumber + 1 == _newBatch.firstBlockNumber);
+        // validate block timestamps
+        if (_previousBatch.lastBlockTimestamp >= _newBatch.firstBlockTimestamp) {
+            revert NonIncreasingTimestamp();
+        }
+        if (block.timestamp - COMMIT_TIMESTAMP_NOT_OLDER > _newBatch.firstBlockTimestamp) {
+            revert TimeNotReached(newBatch.firstBlockTimestamp, block.timestamp - COMMIT_TIMESTAMP_NOT_OLDER);
+        }
+        if (_newBatch.lastBlockTimestamp > block.timestamp + COMMIT_TIMESTAMP_APPROXIMATION_DELTA) {
+            revert L2TimestampTooBig();
+        }
+
+        bytes32 publicInput = _calculatePublicInputZKOS(
+            _newBatch
+        );
+
+        storedBatchInfo = StoredBatchInfo({
+            batchNumber: _newBatch.batchNumber,
+            stateRoot: _newBatch.newStateRoot,
+            indexRepeatedStorageChanges: _newBatch.indexRepeatedStorageChanges,
+            numberOfLayer1Txs: _newBatch.numberOfLayer1Txs,
+            priorityOperationsHash: _newBatch.priorityOperationsHash,
+            l2LogsTreeRoot: _newBatch.l2LogsTreeRoot,
+            lastBlockNumber: _newBatch.lastBlockNumber,
+            lastBlockTimestamp: _newBatch.lastBlockTimestamp,
+            last256BlockHashesHash: _newBatch.last256BlockHashesHash,
+            commitment: commitment
+        });
+        // TODO: we need to be sure that there is enough data to continue execution if calldata lost, see end of `_commitOneBatch`
+    }
+
     /// @notice checks that the timestamps of both the new batch and the new L2 block are correct.
     /// @param _packedBatchAndL2BlockTimestamp - packed batch and L2 block timestamp in a format of batchTimestamp * 2**128 + l2BatchTimestamp
     /// @param _expectedBatchTimestamp - expected batch timestamp
@@ -630,6 +680,25 @@ contract ExecutorFacet is ZKChainBase, IExecutor {
         );
 
         commitment = keccak256(abi.encode(passThroughDataHash, metadataHash, auxiliaryOutputHash));
+    }
+
+    function _calculatePublicInputZKOS(
+        CommitBatchInfoZKOS memory _newBatchData
+    ) internal view returns (bytes32 commitment) {
+        bytes32 chainStateHash = keccak256(abi.encodePacked(
+            _newBatchData.newStateRoot,
+            _newBatchData.indexRepeatedStorageChanges,
+            _newBatchData.lastBlockNumber,
+            _newBatchData.last256BlockHashesHash
+        ));
+        bytes32 outputHash = keccak256(abi.encodePacked(
+            _newBatchData.numberOfLayer1Txs,
+            _newBatchData.priorityOperationsHash,
+            _newBatchData.l2LogsTreeRoot,
+            _newBatchData.l2DAValidatorOutputHash
+        ));
+        // TODO: calculate total PI with previous batch?
+        commitment = keccak256(abi.encode(chainStateHash, outputHash));
     }
 
     function _batchPassThroughData(CommitBatchInfo memory _batch) internal pure returns (bytes memory) {

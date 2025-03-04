@@ -63,12 +63,14 @@ interface IExecutor is IZKChainBase {
     // solhint-disable-next-line gas-struct-packing
     struct StoredBatchInfo {
         uint64 batchNumber;
-        bytes32 batchHash;
+        bytes32 stateRoot;
         uint64 indexRepeatedStorageChanges;
         uint256 numberOfLayer1Txs;
         bytes32 priorityOperationsHash;
         bytes32 l2LogsTreeRoot;
-        uint256 timestamp;
+        uint256 lastBlockNumber;
+        uint256 lastBlockTimestamp;
+        uint256 last256BlockHashesHash;
         bytes32 commitment;
     }
 
@@ -92,14 +94,31 @@ interface IExecutor is IZKChainBase {
     ///     linear hash from the system logs
     struct CommitBatchInfo {
         uint64 batchNumber;
-        uint64 timestamp;
-        uint64 indexRepeatedStorageChanges;
         bytes32 newStateRoot;
+        uint64 indexRepeatedStorageChanges;
         uint256 numberOfLayer1Txs;
         bytes32 priorityOperationsHash;
         bytes32 bootloaderHeapInitialContentsHash;
         bytes32 eventsQueueStateHash;
         bytes systemLogs;
+        bytes operatorDAInput;
+    }
+
+    struct CommitBatchInfoZKOS {
+        uint64 batchNumber;
+        bytes32 newStateRoot;
+        uint64 indexRepeatedStorageChanges;
+        uint256 numberOfLayer1Txs;
+        bytes32 priorityOperationsHash;
+        bytes32 l2LogsTreeRoot;
+        uint256 firstBlockNumber;
+        uint256 lastBlockNumber;
+        uint256 firstBlockTimestamp;
+        uint256 lastBlockTimestamp;
+        // TODO: preimage(block hashes) can be lost
+        bytes32 last256BlockHashesHash;
+        address usedL2DaValidatorAddress;
+        bytes32 l2DAValidatorOutputHash;
         bytes operatorDAInput;
     }
 
