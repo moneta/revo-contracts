@@ -6,19 +6,19 @@ pragma solidity 0.8.24;
 /// @custom:security-contact security@matterlabs.dev
 /// @title ConsensusRegistry contract interface
 interface IConsensusRegistry {
-    /// @dev Represents a consensus node.
-    /// @param validatorLastUpdateCommit The latest `validatorsCommit` where the node's validator attributes were updated.
-    /// @param validatorLatest Validator attributes to read if `node.validatorLastUpdateCommit` < `validatorsCommit`.
-    /// @param validatorSnapshot Validator attributes to read if `node.validatorLastUpdateCommit` == `validatorsCommit`.
-    /// @param nodeOwnerIdx Index of the node owner within the array of node owners.
-    struct Node {
-        uint32 validatorLastUpdateCommit;
-        uint32 nodeOwnerIdx;
-        ValidatorAttr validatorLatest;
-        ValidatorAttr validatorSnapshot;
+    /// @dev Represents a validator in the consensus protocol.
+    /// @param lastUpdateCommit The latest `validatorsCommit` where the validator's attributes were updated.
+    /// @param latest Validator attributes to read if `validator.lastUpdateCommit` < `validatorsCommit`.
+    /// @param snapshot Validator attributes to read if `validator.lastUpdateCommit` == `validatorsCommit`.
+    /// @param ownerIdx Index of the validator owner within the array of validator owners.
+    struct Validator {
+        uint32 lastUpdateCommit;
+        uint32 ownerIdx;
+        ValidatorAttr latest;
+        ValidatorAttr snapshot;
     }
 
-    /// @dev Represents the validator attributes of a consensus node.
+    /// @dev Represents the attributes of a validator.
     /// @param active A flag stating if the validator is active.
     /// @param removed A flag stating if the validator has been removed (and is pending a deletion).
     /// @param weight Validator's voting weight.
@@ -60,46 +60,46 @@ interface IConsensusRegistry {
         bytes16 b;
     }
 
-    error UnauthorizedOnlyOwnerOrNodeOwner();
-    error NodeOwnerExists();
-    error NodeOwnerDoesNotExist();
-    error NodeOwnerNotFound();
+    error UnauthorizedOnlyOwnerOrValidatorOwner();
+    error ValidatorOwnerExists();
+    error ValidatorOwnerDoesNotExist();
+    error ValidatorOwnerNotFound();
     error ValidatorPubKeyExists();
-    error InvalidInputNodeOwnerAddress();
+    error InvalidInputValidatorOwnerAddress();
     error InvalidInputBLS12_381PublicKey();
     error InvalidInputBLS12_381Signature();
 
-    event NodeAdded(
-        address indexed nodeOwner,
+    event ValidatorAdded(
+        address indexed validatorOwner,
         uint32 validatorWeight,
         BLS12_381PublicKey validatorPubKey,
         BLS12_381Signature validatorPoP
     );
-    event NodeDeactivated(address indexed nodeOwner);
-    event NodeActivated(address indexed nodeOwner);
-    event NodeRemoved(address indexed nodeOwner);
-    event NodeDeleted(address indexed nodeOwner);
-    event NodeValidatorWeightChanged(address indexed nodeOwner, uint32 newWeight);
-    event NodeValidatorKeyChanged(address indexed nodeOwner, BLS12_381PublicKey newPubKey, BLS12_381Signature newPoP);
+    event ValidatorDeactivated(address indexed validatorOwner);
+    event ValidatorActivated(address indexed validatorOwner);
+    event ValidatorRemoved(address indexed validatorOwner);
+    event ValidatorDeleted(address indexed validatorOwner);
+    event ValidatorWeightChanged(address indexed validatorOwner, uint32 newWeight);
+    event ValidatorKeyChanged(address indexed validatorOwner, BLS12_381PublicKey newPubKey, BLS12_381Signature newPoP);
     event ValidatorsCommitted(uint32 commit);
 
     function add(
-        address _nodeOwner,
+        address _validatorOwner,
         uint32 _validatorWeight,
         BLS12_381PublicKey calldata _validatorPubKey,
         BLS12_381Signature calldata _validatorPoP
     ) external;
 
-    function deactivate(address _nodeOwner) external;
+    function deactivate(address _validatorOwner) external;
 
-    function activate(address _nodeOwner) external;
+    function activate(address _validatorOwner) external;
 
-    function remove(address _nodeOwner) external;
+    function remove(address _validatorOwner) external;
 
-    function changeValidatorWeight(address _nodeOwner, uint32 _weight) external;
+    function changeValidatorWeight(address _validatorOwner, uint32 _weight) external;
 
     function changeValidatorKey(
-        address _nodeOwner,
+        address _validatorOwner,
         BLS12_381PublicKey calldata _pubKey,
         BLS12_381Signature calldata _pop
     ) external;
