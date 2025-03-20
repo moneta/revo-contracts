@@ -7,13 +7,13 @@ pragma solidity 0.8.24;
 /// @title ConsensusRegistry contract interface
 interface IConsensusRegistry {
     /// @dev Represents a validator in the consensus protocol.
-    /// @param lastUpdateCommit The latest `validatorsCommit` where the validator's attributes were updated.
-    /// @param latest Validator attributes to read if `validator.lastUpdateCommit` < `validatorsCommit`.
-    /// @param snapshot Validator attributes to read if `validator.lastUpdateCommit` == `validatorsCommit`.
     /// @param ownerIdx Index of the validator owner within the array of validator owners.
+    /// @param lastUpdateCommit The latest block number when the validator's attributes were updated.
+    /// @param latest Validator attributes to read if validatorsCommit (current block number) > validator.lastUpdateCommit.
+    /// @param snapshot Validator attributes to read if validatorsCommit (current block number) == validator.lastUpdateCommit.
     struct Validator {
-        uint32 lastUpdateCommit;
         uint32 ownerIdx;
+        uint256 lastUpdateCommit;
         ValidatorAttr latest;
         ValidatorAttr snapshot;
     }
@@ -81,7 +81,7 @@ interface IConsensusRegistry {
     event ValidatorDeleted(address indexed validatorOwner);
     event ValidatorWeightChanged(address indexed validatorOwner, uint32 newWeight);
     event ValidatorKeyChanged(address indexed validatorOwner, BLS12_381PublicKey newPubKey, BLS12_381Signature newPoP);
-    event ValidatorsCommitted(uint32 commit);
+    event ValidatorsCommitted(uint256 blockNumber);
 
     function add(
         address _validatorOwner,

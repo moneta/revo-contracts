@@ -21,8 +21,8 @@ contract ConsensusRegistry is IConsensusRegistry, Initializable, Ownable2StepUpg
     mapping(address => Validator) public validators;
     /// @dev A mapping for enabling efficient lookups when checking whether a given validator public key exists.
     mapping(bytes32 => bool) public validatorPubKeyHashes;
-    /// @dev Counter that increments with each new commit to the validator committee.
-    uint32 public validatorsCommit;
+    /// @dev Block number that specifies the last commit to the validator committee.
+    uint256 public validatorsCommit;
 
     modifier onlyOwnerOrValidatorOwner(address _validatorOwner) {
         if (owner() != msg.sender && _validatorOwner != msg.sender) {
@@ -191,13 +191,13 @@ contract ConsensusRegistry is IConsensusRegistry, Initializable, Ownable2StepUpg
         emit ValidatorKeyChanged(_validatorOwner, _pubKey, _pop);
     }
 
-    /// @notice Adds a new commit to the validator committee.
+    /// @notice Adds a new commit to the validator committee using the current block number.
     /// @dev Implicitly updates the validator committee by affecting readers based on the current state of a validator's attributes:
     /// - If "validatorsCommit" > "validator.lastUpdateCommit", read "validator.latest".
     /// - If "validatorsCommit" == "validator.lastUpdateCommit", read "validator.snapshot".
     /// @dev Only callable by the contract owner.
     function commitValidatorCommittee() external onlyOwner {
-        ++validatorsCommit;
+        validatorsCommit = block.number;
 
         emit ValidatorsCommitted(validatorsCommit);
     }
