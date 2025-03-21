@@ -11,11 +11,13 @@ interface IConsensusRegistry {
     /// @param lastUpdateCommit The latest block number when the validator's attributes were updated.
     /// @param latest Validator attributes to read if validatorsCommit (current block number) > validator.lastUpdateCommit.
     /// @param snapshot Validator attributes to read if validatorsCommit (current block number) == validator.lastUpdateCommit.
+    /// @param previousSnapshot Validator attributes to read for older commits.
     struct Validator {
         uint32 ownerIdx;
-        uint256 lastUpdateCommit;
+        uint32 lastUpdateCommit;
         ValidatorAttr latest;
         ValidatorAttr snapshot;
+        ValidatorAttr previousSnapshot;
     }
 
     /// @dev Represents the attributes of a validator.
@@ -68,6 +70,7 @@ interface IConsensusRegistry {
     error InvalidInputValidatorOwnerAddress();
     error InvalidInputBLS12_381PublicKey();
     error InvalidInputBLS12_381Signature();
+    error NoPendingCommittee();
 
     event ValidatorAdded(
         address indexed validatorOwner,
@@ -81,7 +84,8 @@ interface IConsensusRegistry {
     event ValidatorDeleted(address indexed validatorOwner);
     event ValidatorWeightChanged(address indexed validatorOwner, uint32 newWeight);
     event ValidatorKeyChanged(address indexed validatorOwner, BLS12_381PublicKey newPubKey, BLS12_381Signature newPoP);
-    event ValidatorsCommitted(uint256 blockNumber);
+    event ValidatorsCommitted(uint32 validatorsCommit, uint32 validatorsCommitBlock);
+    event CommitteeActivationDelayChanged(uint256 newDelay);
 
     function add(
         address _validatorOwner,
@@ -90,11 +94,11 @@ interface IConsensusRegistry {
         BLS12_381Signature calldata _validatorPoP
     ) external;
 
-    function deactivate(address _validatorOwner) external;
+    function remove(address _validatorOwner) external;
 
     function activate(address _validatorOwner) external;
 
-    function remove(address _validatorOwner) external;
+    function deactivate(address _validatorOwner) external;
 
     function changeValidatorWeight(address _validatorOwner, uint32 _weight) external;
 
@@ -107,4 +111,8 @@ interface IConsensusRegistry {
     function commitValidatorCommittee() external;
 
     function getValidatorCommittee() external view returns (CommitteeValidator[] memory);
+
+    function getNextValidatorCommittee() external view returns (CommitteeValidator[] memory);
+
+    function setCommitteeActivationDelay(uint256 _delay) external;
 }
