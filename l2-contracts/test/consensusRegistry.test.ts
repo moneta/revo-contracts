@@ -336,6 +336,49 @@ describe("ConsensusRegistry", function () {
     await (await registry.commitValidatorCommittee({ gasLimit })).wait();
   });
 
+  it("Should activate pending committee after delay passes", async function () {
+    // Set delay
+    const delay = 5;
+    await (await registry.setCommitteeActivationDelay(delay, { gasLimit })).wait();
+
+    // Make changes to validator weight
+    const idx = validatorEntries.length - 1;
+    const entry = validatorEntries[idx];
+    const newWeight = entry.validatorWeight + 20;
+    await (await registry.changeValidatorWeight(entry.ownerAddr, newWeight, { gasLimit })).wait();
+
+    // Commit to create pending committee
+    await (await registry.commitValidatorCommittee({ gasLimit })).wait();
+
+    // Verify pending committee has new weight
+    const pendingCommittee = await registry.getNextValidatorCommittee();
+    expect(pendingCommittee[idx].weight).to.equal(newWeight);
+
+    // Verify current committee still has old weight
+    let currentCommittee = await registry.getValidatorCommittee();
+    expect(currentCommittee[idx].weight).to.equal(entry.validatorWeight);
+
+    // Mine blocks to pass the delay
+    for (let i = 0; i < delay; i++) {
+      await hre.network.provider.send("hardhat_mine", ["0x1"]);
+    }
+
+    // Trigger state update with a transaction
+    await (await owner.sendTransaction({
+      to: owner.address,
+      value: 0
+    })).wait();
+
+    // Now pending committee should have become the active committee
+    currentCommittee = await registry.getValidatorCommittee();
+    expect(currentCommittee[idx].weight).to.equal(newWeight);
+
+    // Restore state
+    await (await registry.changeValidatorWeight(entry.ownerAddr, entry.validatorWeight, { gasLimit })).wait();
+    await (await registry.setCommitteeActivationDelay(0, { gasLimit })).wait();
+    await (await registry.commitValidatorCommittee({ gasLimit })).wait();
+  });
+
   function makeRandomValidator(provider?) {
     return {
       ownerKey: new Wallet(Wallet.createRandom().privateKey, provider),
