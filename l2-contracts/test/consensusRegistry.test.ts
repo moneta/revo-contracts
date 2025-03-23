@@ -155,8 +155,9 @@ describe("ConsensusRegistry", function () {
 
   it("Should not allow validatorOwner to change validator weight", async function () {
     const validator = validators[0];
-    await expect(registry.connect(validator.ownerKey).changeValidatorWeight(validator.ownerKey.address, 0, { gasLimit })).to.be
-      .reverted;
+    await expect(
+      registry.connect(validator.ownerKey).changeValidatorWeight(validator.ownerKey.address, 0, { gasLimit })
+    ).to.be.reverted;
   });
 
   it("Should not allow nonOwner to change validator weight", async function () {
@@ -236,12 +237,7 @@ describe("ConsensusRegistry", function () {
     // Restore state.
     await (await registry.remove(entry.ownerAddr, { gasLimit })).wait();
     await (
-      await registry.add(
-        entry.ownerAddr,
-        entry.validatorWeight,
-        entry.validatorPubKey,
-        entry.validatorPoP
-      )
+      await registry.add(entry.ownerAddr, entry.validatorWeight, entry.validatorPubKey, entry.validatorPoP)
     ).wait();
     await (await registry.commitValidatorCommittee({ gasLimit })).wait();
   });
@@ -299,12 +295,7 @@ describe("ConsensusRegistry", function () {
 
     // Restore state.
     await (
-      await registry.add(
-        entry.ownerAddr,
-        entry.validatorWeight,
-        entry.validatorPubKey,
-        entry.validatorPoP
-      )
+      await registry.add(entry.ownerAddr, entry.validatorWeight, entry.validatorPubKey, entry.validatorPoP)
     ).wait();
     await (await registry.commitValidatorCommittee({ gasLimit })).wait();
   });
@@ -339,7 +330,7 @@ describe("ConsensusRegistry", function () {
   function makeRandomValidator(provider?) {
     return {
       ownerKey: new Wallet(Wallet.createRandom().privateKey, provider),
-      validatorKey: Wallet.createRandom()
+      validatorKey: Wallet.createRandom(),
     };
   }
 
@@ -348,7 +339,7 @@ describe("ConsensusRegistry", function () {
       ownerAddr: validator.ownerKey.address,
       validatorWeight: weight,
       validatorPubKey: getRandomValidatorPubKey(),
-      validatorPoP: getRandomValidatorPoP()
+      validatorPoP: getRandomValidatorPoP(),
     };
   }
 });
