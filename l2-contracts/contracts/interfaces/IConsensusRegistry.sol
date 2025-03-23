@@ -84,7 +84,7 @@ interface IConsensusRegistry {
     event ValidatorDeleted(address indexed validatorOwner);
     event ValidatorWeightChanged(address indexed validatorOwner, uint32 newWeight);
     event ValidatorKeyChanged(address indexed validatorOwner, BLS12_381PublicKey newPubKey, BLS12_381Signature newPoP);
-    event ValidatorsCommitted(uint32 validatorsCommit, uint32 validatorsCommitBlock);
+    event ValidatorsCommitted(uint32 validatorsCommit, uint256 validatorsCommitBlock);
     event CommitteeActivationDelayChanged(uint256 newDelay);
 
     function add(
