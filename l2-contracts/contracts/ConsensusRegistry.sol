@@ -27,7 +27,7 @@ contract ConsensusRegistry is IConsensusRegistry, Initializable, Ownable2StepUpg
     uint256 public validatorsCommitBlock;
     /// @dev The delay in blocks before a committee commit becomes active.
     uint256 public committeeActivationDelay;
-    
+
     modifier onlyOwnerOrValidatorOwner(address _validatorOwner) {
         if (owner() != msg.sender && _validatorOwner != msg.sender) {
             revert UnauthorizedOnlyOwnerOrValidatorOwner();
@@ -212,13 +212,13 @@ contract ConsensusRegistry is IConsensusRegistry, Initializable, Ownable2StepUpg
         if (block.number < validatorsCommitBlock) {
             return;
         }
-        
+
         // Increment the commit number.
         ++validatorsCommit;
-        
+
         // Schedule the new commit to activate after the delay
         validatorsCommitBlock = block.number + committeeActivationDelay;
-        
+
         emit ValidatorsCommitted(validatorsCommit, validatorsCommitBlock);
     }
 
@@ -250,7 +250,7 @@ contract ConsensusRegistry is IConsensusRegistry, Initializable, Ownable2StepUpg
         for (uint256 i = 0; i < len; ++i) {
             Validator storage validator = validators[validatorOwners[i]];
             ValidatorAttr memory validatorAttr;
-            
+
             if (_isNextCommittee) {
                 // Get the attributes that will be active in the next committee
                 if (validator.lastUpdateCommit < validatorsCommit) {
@@ -261,7 +261,7 @@ contract ConsensusRegistry is IConsensusRegistry, Initializable, Ownable2StepUpg
             } else {
                 validatorAttr = _getValidatorAttributes(validator);
             }
-            
+
             if (validatorAttr.active && !validatorAttr.removed) {
                 committee[count] = CommitteeValidator({
                     weight: validatorAttr.weight,
@@ -297,7 +297,7 @@ contract ConsensusRegistry is IConsensusRegistry, Initializable, Ownable2StepUpg
             } else {
                 return validator.snapshot;
             }
-        // If the current commit is not yet active, return the snapshot or previous snapshot depending on the lastUpdateCommit.
+            // If the current commit is not yet active, return the snapshot or previous snapshot depending on the lastUpdateCommit.
         } else {
             if (validator.lastUpdateCommit < validatorsCommit - 1) {
                 return validator.snapshot;
