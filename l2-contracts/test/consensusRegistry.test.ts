@@ -364,10 +364,12 @@ describe("ConsensusRegistry", function () {
     }
 
     // Trigger state update with a transaction
-    await (await owner.sendTransaction({
-      to: owner.address,
-      value: 0
-    })).wait();
+    await (
+      await owner.sendTransaction({
+        to: owner.address,
+        value: 0,
+      })
+    ).wait();
 
     // Now pending committee should have become the active committee
     currentCommittee = await registry.getValidatorCommittee();
