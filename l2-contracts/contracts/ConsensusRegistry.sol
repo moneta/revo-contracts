@@ -219,7 +219,7 @@ contract ConsensusRegistry is IConsensusRegistry, Initializable, Ownable2StepUpg
         // Schedule the new commit to activate after the delay
         validatorsCommitBlock = block.number + committeeActivationDelay;
         
-        emit ValidatorsCommitScheduled(validatorsCommit, validatorsCommitBlock);
+        emit ValidatorsCommitted(validatorsCommit, validatorsCommitBlock);
     }
 
     /// @notice Returns an array of `ValidatorAttr` structs representing the current validator committee.
