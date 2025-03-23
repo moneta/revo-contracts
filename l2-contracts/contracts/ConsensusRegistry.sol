@@ -23,7 +23,7 @@ contract ConsensusRegistry is IConsensusRegistry, Initializable, Ownable2StepUpg
     mapping(bytes32 => bool) public validatorPubKeyHashes;
     /// @dev Counter that increments with each new commit to the validator committee.
     uint32 public validatorsCommit;
-    /// @dev Block number of the last commit to the validator committee.
+    /// @dev Block number when the last commit to the validator committee becomes active.
     uint256 public validatorsCommitBlock;
     /// @dev The delay in blocks before a committee commit becomes active.
     uint256 public committeeActivationDelay;
