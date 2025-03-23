@@ -90,7 +90,8 @@ contract ConsensusRegistry is IConsensusRegistry, Initializable, Ownable2StepUpg
                 pubKey: BLS12_381PublicKey({a: bytes32(0), b: bytes32(0), c: bytes32(0)}),
                 proofOfPossession: BLS12_381Signature({a: bytes32(0), b: bytes16(0)})
             }),
-            lastUpdateCommit: validatorsCommit,
+            lastSnapshotCommit: validatorsCommit,
+            previousSnapshotCommit: 0,
             ownerIdx: ownerIdx
         });
         validatorPubKeyHashes[validatorPubKeyHash] = true;
@@ -253,7 +254,7 @@ contract ConsensusRegistry is IConsensusRegistry, Initializable, Ownable2StepUpg
 
             if (_isNextCommittee) {
                 // Get the attributes that will be active in the next committee
-                if (validator.lastUpdateCommit < validatorsCommit) {
+                if (validator.lastSnapshotCommit < validatorsCommit) {
                     validatorAttr = validator.latest;
                 } else {
                     validatorAttr = validator.snapshot;
@@ -290,20 +291,20 @@ contract ConsensusRegistry is IConsensusRegistry, Initializable, Ownable2StepUpg
     /// @notice Returns the validator attributes based on current commits and snapshots
     /// @dev Helper function to get the appropriate validator attributes based on commit state
     function _getValidatorAttributes(Validator storage validator) private view returns (ValidatorAttr memory) {
-        // If the current commit is already active, return either latest or snapshot depending on the lastUpdateCommit.
+        uint32 currentActiveCommit;
+
         if (block.number >= validatorsCommitBlock) {
-            if (validator.lastUpdateCommit < validatorsCommit) {
-                return validator.latest;
-            } else {
-                return validator.snapshot;
-            }
-            // If the current commit is not yet active, return the snapshot or previous snapshot depending on the lastUpdateCommit.
+            currentActiveCommit = validatorsCommit;
         } else {
-            if (validator.lastUpdateCommit < validatorsCommit - 1) {
-                return validator.snapshot;
-            } else {
-                return validator.previousSnapshot;
-            }
+            currentActiveCommit = validatorsCommit - 1;
+        }
+
+        if (currentActiveCommit > validator.lastSnapshotCommit) {
+            return validator.latest;
+        } else if (currentActiveCommit > validator.previousSnapshotCommit) {
+            return validator.snapshot;
+        } else {
+            return validator.previousSnapshot;
         }
     }
 
@@ -341,11 +342,12 @@ contract ConsensusRegistry is IConsensusRegistry, Initializable, Ownable2StepUpg
     }
 
     function _ensureValidatorSnapshot(Validator storage _validator) private {
-        if (_validator.lastUpdateCommit < validatorsCommit) {
+        if (_validator.lastSnapshotCommit < validatorsCommit) {
             // When creating a snapshot, preserve the previous one
             _validator.previousSnapshot = _validator.snapshot;
+            _validator.previousSnapshotCommit = _validator.lastSnapshotCommit;
             _validator.snapshot = _validator.latest;
-            _validator.lastUpdateCommit = validatorsCommit;
+            _validator.lastSnapshotCommit = validatorsCommit;
         }
     }
 

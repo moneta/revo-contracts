@@ -8,13 +8,15 @@ pragma solidity 0.8.24;
 interface IConsensusRegistry {
     /// @dev Represents a validator in the consensus protocol.
     /// @param ownerIdx Index of the validator owner within the array of validator owners.
-    /// @param lastUpdateCommit The latest block number when the validator's attributes were updated.
-    /// @param latest Validator attributes to read if validatorsCommit (current block number) > validator.lastUpdateCommit.
-    /// @param snapshot Validator attributes to read if validatorsCommit (current block number) == validator.lastUpdateCommit.
+    /// @param lastSnapshotCommit The `validatorsCommit` value when the last snapshot of this validator was made.
+    /// @param previousSnapshotCommit The `validatorsCommit` value when the previous snapshot of this validator was made.
+    /// @param latest Validator attributes to read if `validatorsCommit` > `validator.lastSnapshotCommit`.
+    /// @param snapshot Validator attributes to read if `validatorsCommit` > `validator.previousSnapshot`.
     /// @param previousSnapshot Validator attributes to read for older commits.
     struct Validator {
         uint32 ownerIdx;
-        uint32 lastUpdateCommit;
+        uint32 lastSnapshotCommit;
+        uint32 previousSnapshotCommit;
         ValidatorAttr latest;
         ValidatorAttr snapshot;
         ValidatorAttr previousSnapshot;

@@ -86,7 +86,8 @@ describe("ConsensusRegistry", function () {
       const validatorOwner = await registry.validatorOwners(i);
       expect(validatorOwner).to.equal(validatorEntries[i].ownerAddr);
       const validator = await registry.validators(validatorOwner);
-      expect(validator.lastUpdateCommit).to.equal(0);
+      expect(validator.lastSnapshotCommit).to.equal(0);
+      expect(validator.previousSnapshotCommit).to.equal(0);
 
       // 'Latest' is expected to match the added validator's attributes.
       expect(validator.latest.active).to.equal(true);
@@ -107,6 +108,14 @@ describe("ConsensusRegistry", function () {
       expect(ethers.utils.arrayify(validator.snapshot.pubKey.c)).to.deep.equal(new Uint8Array(32));
       expect(ethers.utils.arrayify(validator.snapshot.proofOfPossession.a)).to.deep.equal(new Uint8Array(32));
       expect(ethers.utils.arrayify(validator.snapshot.proofOfPossession.b)).to.deep.equal(new Uint8Array(16));
+
+      // 'Previous snapshot' is expected to have zero values.
+      expect(validator.previousSnapshot.active).to.equal(false);
+      expect(validator.previousSnapshot.removed).to.equal(false);
+      expect(validator.previousSnapshot.weight).to.equal(0);
+      expect(ethers.utils.arrayify(validator.previousSnapshot.pubKey.a)).to.deep.equal(new Uint8Array(32));
+      expect(ethers.utils.arrayify(validator.previousSnapshot.pubKey.b)).to.deep.equal(new Uint8Array(32));
+      expect(ethers.utils.arrayify(validator.previousSnapshot.pubKey.c)).to.deep.equal(new Uint8Array(32));
     }
   });
 
