@@ -323,8 +323,10 @@ describe("ConsensusRegistry", function () {
     await (await registry.commitValidatorCommittee({ gasLimit })).wait();
 
     // Attempting to commit again before delay passes should revert
-    await expect(registry.commitValidatorCommittee({ gasLimit }))
-      .to.be.revertedWithCustomError(registry, "PreviousCommitStillPending");
+    await expect(registry.commitValidatorCommittee({ gasLimit })).to.be.revertedWithCustomError(
+      registry,
+      "PreviousCommitStillPending"
+    );
 
     // Should have a pending committee
     const pendingCommittee = await registry.getNextValidatorCommittee();
