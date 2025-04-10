@@ -322,6 +322,10 @@ describe("ConsensusRegistry", function () {
     // Commit
     await (await registry.commitValidatorCommittee({ gasLimit })).wait();
 
+    // Attempting to commit again before delay passes should revert
+    await expect(registry.commitValidatorCommittee({ gasLimit }))
+      .to.be.revertedWithCustomError(registry, "PreviousCommitStillPending");
+
     // Should have a pending committee
     const pendingCommittee = await registry.getNextValidatorCommittee();
     expect(pendingCommittee[idx].weight).to.equal(entry.validatorWeight + 10);

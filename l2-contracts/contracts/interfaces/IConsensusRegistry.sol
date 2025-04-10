@@ -73,6 +73,7 @@ interface IConsensusRegistry {
     error InvalidInputBLS12_381PublicKey();
     error InvalidInputBLS12_381Signature();
     error NoPendingCommittee();
+    error PreviousCommitStillPending();
 
     event ValidatorAdded(
         address indexed validatorOwner,

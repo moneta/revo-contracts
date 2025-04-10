@@ -40,7 +40,6 @@ contract ConsensusRegistry is IConsensusRegistry, Initializable, Ownable2StepUpg
             revert InvalidInputValidatorOwnerAddress();
         }
         _transferOwnership(_initialOwner);
-        committeeActivationDelay = 0; // Initially no delay
     }
 
     /// @notice Adds a new validator to the registry.
@@ -207,11 +206,11 @@ contract ConsensusRegistry is IConsensusRegistry, Initializable, Ownable2StepUpg
     /// @notice Adds a new commit to the validator committee using the current block number plus delay.
     /// @dev The committee will become active after committeeActivationDelay blocks.
     /// @dev Only callable by the contract owner.
-    /// @dev If called while validatorsCommitBlock is still in the future, the call is ignored.
+    /// @dev Reverts if validatorsCommitBlock is still in the future.
     function commitValidatorCommittee() external onlyOwner {
-        // If validatorsCommitBlock is still in the future, do nothing
+        // If validatorsCommitBlock is still in the future, revert
         if (block.number < validatorsCommitBlock) {
-            return;
+            revert PreviousCommitStillPending();
         }
 
         // Increment the commit number.
