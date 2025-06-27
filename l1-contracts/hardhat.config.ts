@@ -26,7 +26,7 @@ const zkSyncBaseNetworkEnv =
     : {};
 
 export default {
-  defaultNetwork: "env",
+  defaultNetwork: "sepolia",
   solidity: {
     version: "0.8.28",
     settings: {
@@ -68,6 +68,11 @@ export default {
         url: "https://eth-goerli.g.alchemy.com/v2/" + process.env.ALCHEMY_KEY,
         enabled: process.env.TEST_CONTRACTS_FORK === "1",
       },
+    },
+    sepolia: {
+      url: "https://rpc.ankr.com/eth_sepolia/" + process.env.ANKR_KEY,
+      accounts: [process.env.GORVENER_PRIVATE_KEY],
+      gas: 5000000,
     },
     localL1: {
       url: DEFAULT_ETH_NETWORK,

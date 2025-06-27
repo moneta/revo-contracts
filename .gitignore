@@ -35,3 +35,6 @@ l1-contracts/test/foundry/l1/integration/deploy-scripts/script-config/config-dep
 l1-contracts/test/foundry/integration/deploy-scripts/script-out/*
 l1-contracts/test/foundry/l1/integration/upgrade-envs/script-out/*.toml
 l1-contracts/zkout/*
+l1-contracts/lib/
+l2-contracts/lib/
+system-contracts/lib/
