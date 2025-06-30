@@ -1,5 +1,6 @@
 const hre = require("hardhat");
 const fs = require('fs');
+const BN = require('bn.js');
 const { parse } = require('yaml');
 
 const facetAction = {
@@ -29,7 +30,6 @@ const config = {
 };
 const Bytes32Zero = "0x0000000000000000000000000000000000000000000000000000000000000000";
 const AddressZero = "0x0000000000000000000000000000000000000000";
-const PatchZero = 2**32;
 
 const sleep = (milliseconds) =>  new Promise((resolve) => setTimeout(resolve, milliseconds));
 
@@ -49,14 +49,15 @@ const governanceExecuteInstant = async (calls, predecessor, salt) => {
 }
 
 // return DiamondCut data for setProtocolVersionUpgrade and UpgradeChainFromVersion
-const setNewVersionUpgradeFunctionData = async (isPatchUpgrade, timestamp, prevMinor, minor, forceDeploymentData, factoryDepHashes) => {
-  const oldProtocolVersion = prevMinor * PatchZero;
-  // Protocol version: uint96, 32bit(major).32bit(minor or protocol version).32bit(patch)
-  const newProtocolVersion = isPatchUpgrade ? oldProtocolVersion + 1 : minor * PatchZero; 
+const setNewVersionUpgradeFunctionData = async (timestamp, deadline, oldProtocolVersion, newProtocolVersion, forceDeploymentData, factoryDepHashes) => {
   console.log(`Preversion: ${oldProtocolVersion} Next Version: ${newProtocolVersion}`);
   console.log("Factory Deps", factoryDepHashes);
   const stm = await hre.ethers.getContractAt("ChainTypeManager", config.stmAddress);
   const upgrade = await hre.ethers.getContractFactory("DefaultUpgrade");
+
+  const minor = BigInt(newProtocolVersion) >> 32n;
+  const nonce = minor*1000n + BigInt(newProtocolVersion & 0x00FF);
+  console.log("New nonce:", nonce.toString());
 
   // Refer to: EcosystemUpgrade.s.sol/generateUpgradeCutData
   const initCalldata = upgrade.interface.encodeFunctionData("upgrade", [[
@@ -70,7 +71,7 @@ const setNewVersionUpgradeFunctionData = async (isPatchUpgrade, timestamp, prevM
       0,        // maxFeePerGas
       0,        // maxPriorityFeePerGas
       0,        // paymaster
-      minor,    // nonce: same as minor >> Refer to: getProtocolUpgradeNonce
+      nonce.toString(),    // nonce: same as minor >> Refer to: getProtocolUpgradeNonce
       0,        // value
       [0,0,0,0], // reserved
       forceDeploymentData, // data
@@ -104,7 +105,7 @@ const setNewVersionUpgradeFunctionData = async (isPatchUpgrade, timestamp, prevM
         initCalldata            // initCalldata
       ],
       oldProtocolVersion,       // _oldProtocolVersion
-      2743459943,               // _oldProtocolVersionDeadline
+      deadline,                 // _oldProtocolVersionDeadline
       newProtocolVersion        // _newProtocolVersion
     ]
   );
@@ -115,12 +116,12 @@ const setNewVersionUpgradeFunctionData = async (isPatchUpgrade, timestamp, prevM
   };
 }
 
-const upgradeChainFromVersion = async (prevMinor, initialCallData) => {
+const upgradeChainFromVersion = async (protocolVersion, initialCallData) => {
   const diamond = await hre.ethers.getContractAt("AdminFacet", config.diamondProxyAddress);
   const encodedCallData = await diamond.interface.encodeFunctionData(
     "upgradeChainFromVersion",
     [
-      prevMinor * PatchZero,
+      protocolVersion,
       [
         [],
         config.upgradeAddress,
@@ -135,9 +136,9 @@ const upgradeChainFromVersion = async (prevMinor, initialCallData) => {
   return txResult;
 }
 
-const setUpgradeTimestamp = async (minor, timestamp) => {
+const setUpgradeTimestamp = async (protocolVersion, timestamp) => {
   const chainAdmin = await hre.ethers.getContractAt("ChainAdminOwnable", config.chainAdminAddress);
-  const result = await chainAdmin.setUpgradeTimestamp(minor * PatchZero, timestamp);
+  const result = await chainAdmin.setUpgradeTimestamp(protocolVersion, timestamp);
   console.log("SetUpgradeTimestamp Transaction Result:", result);
   return result;
 }
@@ -191,16 +192,38 @@ const bridgeHubPauseMigration = async () => {
 
 async function pauseMigration() {
   const encodePauseMigration = await bridgeHubPauseMigration();
-  console.log(encodePauseMigration)
-  await governanceExecuteInstant([[config.bridgeHubProxyAddress, 0, encodePauseMigration]], Bytes32Zero, Bytes32Zero)
+  await governanceExecuteInstant([[config.bridgeHubProxyAddress, 0, encodePauseMigration]], Bytes32Zero, Bytes32Zero);
+  console.log('Done - pauseMigration');
 }
 
 let STEP = 0;
 async function main() {
+  // const timestamp = 1745231822;
+  // const prevMinor = 28;
+  // const minor = 29;
+
+  const gettersFacet = await hre.ethers.getContractAt("GettersFacet", config.diamondProxyAddress);
+  const facets = await gettersFacet.facetAddresses();
+  console.log("Facets in this diamond:", facets);
+
+  // Protocol version: uint96, 32bit(major).32bit(minor or protocol version).32bit(patch)
+  const oldProtocolVersion = await gettersFacet.getProtocolVersion();
+  const newProtocolVersion = oldProtocolVersion.add(1);
+  console.log("Current protocol version:", oldProtocolVersion.toHexString());
+  console.log("New protocol version:", newProtocolVersion.toHexString());
+
+  const upgradeTimestamp = Math.floor(Date.now() / 1000);
+  console.log('Upgrade timestamp:', upgradeTimestamp);
+
+  // 1. A chain has to keep their protocol version up to date, as processing a block requires the latest or previous protocol version
+  //    to solve this we will need to add the feature to create batches with only the protocol upgrade tx, without any other txs.
+  // 2. A chain might become out of sync if it launches while we are in the middle of a protocol upgrade. This would mean they cannot process their genesis upgrade
+  //    as their protocolversion would be outdated, and they also cannot process the protocol upgrade tx as they have a pending upgrade.
+  // 3. The protocol upgrade is increased in the BaseZkSyncUpgrade, in the executor only the systemContractsUpgradeTxHash is checked
+  const deadline = Math.floor(Date.now() / 1000 + 60*60*24*90); // 90 days since now
+  console.log('Upgrade deadline:', deadline);  
+
   console.log(config);
-  const timestamp = 1745231822;
-  const prevMinor = 28;
-  const minor = 29;
 
   await info();
 
@@ -213,16 +236,16 @@ async function main() {
         // NodeContract and L2BaseToken
         const forceDeploymentData = "0xe9f18c17000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000020010003a10255acc3ac75e5942a0177e0cd75c9bd142ff6c89f3080204a634fdf00000000000000000000000000000000000000000000000000000000000011160000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000a00000000000000000000000000000000000000000000000000000000000000000";
         const forceDeploymentHashes = ["0x010003a10255acc3ac75e5942a0177e0cd75c9bd142ff6c89f3080204a634fdf"]
-        const callData = await setNewVersionUpgradeFunctionData(false, timestamp, prevMinor, minor, forceDeploymentData, forceDeploymentHashes);
+        const callData = await setNewVersionUpgradeFunctionData(upgradeTimestamp, deadline, oldProtocolVersion, newProtocolVersion, forceDeploymentData, forceDeploymentHashes);
         console.log('callData:', callData['initialCallData']);
 
         await governanceExecuteInstant([[config.stmAddress, 0, callData['callData']]], Bytes32Zero, Bytes32Zero);
         await sleep(120000);
 
-        await upgradeChainFromVersion(prevMinor, callData['initialCallData']);
+        await upgradeChainFromVersion(oldProtocolVersion, callData['initialCallData']);
         await sleep(120000);
 
-        await setUpgradeTimestamp(minor, timestamp);
+        await setUpgradeTimestamp(newProtocolVersion, upgradeTimestamp);
       break;
     default:
         console.log('Replace a specific step 1 - 2:');
