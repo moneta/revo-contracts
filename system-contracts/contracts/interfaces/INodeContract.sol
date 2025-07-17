@@ -3,9 +3,9 @@ pragma solidity ^0.8.20;
 
 struct NodeData {
     uint256 index;
-    uint256 priority;
+    int256 priority;
     uint256 stakeAmount;
-    uint128 rewardDebt;
+    // uint128 rewardDebt;
 }
 
 int256 constant PENALTY_FACTOR = 11250;
@@ -18,11 +18,13 @@ address constant BOOTLOADER_ADDR = 0x0000000000000000000000000000000000009001; /
 interface INodeContract {
     function selectNode() external returns (address winner);
 
-    function stake(uint256 _stakeAmount) external;
+    function onNodeStaked(address node, uint256 amount) external;
 
-    function unstake() external;
+    function onNodeUnstaked(address node) external;
 
-    function updateDelegation(address node, uint256 amount, bool flag) external;
+    function decreaseDelegation(address node, address creator, uint256 amount) external returns(uint256);
+
+    function increaseDelegation(address node, address creator, uint256 amount) external returns(uint256);
 
     function getNodeAtIndex(uint256 index) external view returns (address);
 
@@ -33,6 +35,10 @@ interface INodeContract {
     function isNode(address _node) external view returns (bool);
 
     function getNode(address _node) external view returns (NodeData memory);
+
+    function getLowestDelegator(address node) external view returns (address lowest, uint256 amount);
+
+    function getNodeDelegatorCount(address node) external view returns (uint256);
 
     event NewNode(address indexed node);
 

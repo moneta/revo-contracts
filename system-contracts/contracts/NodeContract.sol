@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 
-pragma solidity 0.8.24;
+pragma solidity 0.8.28;
 
-import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
+import {ReentrancyGuard} from "../lib/openzeppelin-contracts-v4/contracts/security/ReentrancyGuard.sol";
 import {IBaseToken} from "./interfaces/IBaseToken.sol";
 import {INodeContract, BASE_TOKEN_ADDR, NodeData, SCALE_FACTOR, PENALTY_FACTOR, BOOTLOADER_ADDR} from "./interfaces/INodeContract.sol";
 import {InsufficientStake, InsufficientDelegation, Unauthorized, CooldownActive, NodeCutTooHigh, CreatorLimitReached, EmptyNodeSet, ZeroAmountError, InvalidNode, TransferEthFailed} from "./SystemContractErrors.sol";
@@ -11,7 +11,6 @@ contract NodeContract is INodeContract, ReentrancyGuard {
     uint256 public constant MAX_NODE_NUMBER = 250;
     uint256 public constant MAX_CREATORS_PER_NODE = 200;
     uint256 constant HALVING_BLOCKS = 5;
-    uint256 constant MINIMUM_STAKE = 10000 * 10 ** 18;
     uint256 public constant GUARANTOR_COOLDOWN = 1 hours;   // or e.g., 3600 for 1hr
     
     uint256 public constant MAX_NODE_CUT_BPS = 5000;        // 50%
@@ -60,7 +59,7 @@ contract NodeContract is INodeContract, ReentrancyGuard {
     }
 
     function setNodeCut(uint256 cutBps) external {
-        if (!nodeSet[msg.sender].stakeAmount > 0) {
+        if (nodeSet[msg.sender].stakeAmount <= 0) {
             revert Unauthorized(msg.sender);
         }
 
@@ -86,7 +85,7 @@ contract NodeContract is INodeContract, ReentrancyGuard {
         }
     }
 
-    function distributeToCreators(address node, uint256 totalReward) internal ReentrancyGuard {
+    function distributeToCreators(address node, uint256 totalReward) internal nonReentrant {
         uint256 cut = nodeCutBps[node];
         if (cut == 0) {
             cut = DEFAULT_NODE_CUT_BPS; // fallback to default if unset
@@ -98,7 +97,7 @@ contract NodeContract is INodeContract, ReentrancyGuard {
         // Pay node's reward cut
         (bool nodePaid, ) = node.call{value: nodeCut}("");
         if (!nodePaid) {
-            revert TransferEthFailed(node);
+            revert TransferEthFailed();
         }
         emit NodeRewardPaid(node, nodeCut);
 
@@ -128,7 +127,7 @@ contract NodeContract is INodeContract, ReentrancyGuard {
         uint256 remainder = creatorPool - distributed;
         if (remainder > 0) {
             (bool ok, ) = node.call{value: remainder}("");
-            if (!ok) revert TransferEthFailed(node);
+            if (!ok) revert TransferEthFailed();
         }
     }
 
@@ -230,7 +229,7 @@ contract NodeContract is INodeContract, ReentrancyGuard {
         return 0;
     }
 
-    function onNodeStaked(address node, uint256 amount) external override onlyL2BaseToken {
+    function onNodeStaked(address node, uint256 amount) external onlyL2BaseToken {
         uint256 delegation = IBaseToken(BASE_TOKEN_ADDR).delegatedTo(node);
         uint256 totalStakeAmount = amount + delegation;
 
@@ -261,7 +260,7 @@ contract NodeContract is INodeContract, ReentrancyGuard {
     }
 
 
-    function onNodeUnstaked(address node) external override onlyL2BaseToken {
+    function onNodeUnstaked(address node) external onlyL2BaseToken {
         _unstake(node); // local-only cleanup
     }
 
@@ -274,7 +273,7 @@ contract NodeContract is INodeContract, ReentrancyGuard {
         return updateDelegation(node, creator, amount, false);
     }
 
-    function updateDelegation(address node, address creator, uint256 amount, bool flag) external onlyL2BaseToken returns(uint256) {
+    function updateDelegation(address node, address creator, uint256 amount, bool flag) internal onlyL2BaseToken returns(uint256) {
         if (nodeSet[node].stakeAmount == 0) {
             revert InvalidNode(msg.sender);
         }
@@ -403,7 +402,7 @@ contract NodeContract is INodeContract, ReentrancyGuard {
         if (amount > 0) {
             (bool success, ) = guarantor.call{value: amount}("");
             if (!success) {
-                revert TransferEthFailed(msg.sender);
+                revert TransferEthFailed();
             }
             guarantor = address(0);
 

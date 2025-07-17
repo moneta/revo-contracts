@@ -5,10 +5,8 @@ pragma solidity ^0.8.20;
 /// @author Matter Labs
 /// @custom:security-contact security@matterlabs.dev
 
-address constant NODE_CONTRACT_ADDR = 0x0000000000000000000000000000000000001116;
-
 interface IBaseToken {
-    function stake(address _to, uint256 _amount) external;
+    function stake(address _to) external payable;
 
     function unstake(address _from) external;
     

@@ -1,13 +1,10 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.24;
+pragma solidity ^0.8.28;
 
-import {ReentrancyGuard} from "@openzeppelin/contracts/security/ReentrancyGuard.sol";
-import {InvalidInput, InvalidCreator, TooBigCut, InvalidCreatorZeroAmountError, TransferEthFailed} from "./SystemContractErrors.sol";
-
-interface IL2BaseToken {
-    function stake(address _to, uint256 _amount) external payable;
-    function isCreatorPool(address pool) external view returns (bool);
-}
+import {ReentrancyGuard} from "../lib/openzeppelin-contracts-v4/contracts/security/ReentrancyGuard.sol";
+import {InvalidInput, InvalidCreator, Unauthorized, TooBigCut, ZeroAmountError, TransferEthFailed} from "./SystemContractErrors.sol";
+import {IBaseToken} from "./interfaces/IBaseToken.sol";
+import {NODE_CONTRACT_ADDR} from "./Constants.sol";
 
 /// @title CreatorPool
 /// @notice A smart contract pool where fans can stake to support creators who have staked to a node.
@@ -27,7 +24,7 @@ contract CreatorPool is ReentrancyGuard {
     mapping(address => uint256) public rewardDebt;
     mapping(address => uint256) public pendingRewards;    
 
-    // event FanStakeUpdated(address indexed fan, uint256 amount);
+    event FanStaked(address indexed fan, uint256 amount);
     event RewardReceived(uint256 amount);
     event StakeRegisteredToNode(address indexed node, uint256 amount);
     event RewardClaimed(address indexed fan, uint256 amount);
@@ -38,19 +35,19 @@ contract CreatorPool is ReentrancyGuard {
     }
 
     modifier onlyBaseToken() {
-        if(msg.sender !== baseToken) revert Unauthorized(msg.sender);
+        if(msg.sender != baseToken) revert Unauthorized(msg.sender);
         _;
     }
 
     modifier onlyNodeContract() {
         if (msg.sender != NODE_CONTRACT_ADDR) revert Unauthorized(msg.sender);
-        -;
+        _;
     }
 
     constructor(address _baseToken, address _node, address _factory, address _creator, uint256 _creatorCut) {
         if(_baseToken == address(0) || _node == address(0)) revert InvalidInput();
 
-        if(_creator == address(0)) revert InvalidCreator();
+        if(_creator == address(0)) revert InvalidCreator(_creator);
 
         if(_creatorCut > MAX_CREATOR_CUT) revert TooBigCut();
 
@@ -69,7 +66,7 @@ contract CreatorPool is ReentrancyGuard {
     function registerAsCreatorPool() external payable nonReentrant onlyFactory {
         if (msg.value <= 0) revert ZeroAmountError();
 
-        IL2BaseToken(baseToken).stake{value: msg.value}(node);
+        IBaseToken(baseToken).stake{value: msg.value}(node);
         emit StakeRegisteredToNode(node, msg.value);
     }
 
@@ -83,21 +80,6 @@ contract CreatorPool is ReentrancyGuard {
 
         emit FanStaked(fan, newStake);
     }
-
-    /// @notice Update fan stake from external token logic
-    // function updateFanStake(address fan, uint256 newStake) external onlyBaseToken {
-    //     uint256 oldStake = fanStakes[fan];
-    //     if (oldStake > 0) {
-    //         uint256 accumulated = (oldStake * accRewardPerShare) / PRECISION;
-    //         pendingRewards[fan] += accumulated - rewardDebt[fan];
-    //     }
-
-    //     fanStakes[fan] = newStake;
-    //     rewardDebt[fan] = (newStake * accRewardPerShare) / PRECISION;
-        
-    //     // update totalStaked
-    //     totalStaked = totalStaked - oldStake + newStake;
-    // }
 
     /// @notice Claim rewards for the caller
     function claimReward() external nonReentrant {

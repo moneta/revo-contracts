@@ -1,14 +1,15 @@
 // SPDX-License-Identifier: MIT
 
-pragma solidity 0.8.24;
+pragma solidity 0.8.28;
 
-import {IBaseToken, NODE_CONTRACT_ADDR} from "./interfaces/IBaseToken.sol";
+import {NODE_CONTRACT_ADDR, MINIMUM_NODE_STAKE} from "./Constants.sol";
+import {IBaseToken} from "./interfaces/IBaseToken.sol";
 import {INodeContract} from "./interfaces/INodeContract.sol";
 import {ICreatorPool} from "./interfaces/ICreatorPool.sol";
 import {SystemContractBase} from "./abstract/SystemContractBase.sol";
 import {MSG_VALUE_SYSTEM_CONTRACT, DEPLOYER_SYSTEM_CONTRACT, BOOTLOADER_FORMAL_ADDRESS, L1_MESSENGER_CONTRACT} from "./Constants.sol";
 import {IMailbox} from "./interfaces/IMailbox.sol";
-import {Unauthorized, InsufficientFunds, SelfStake, SelfUnstake, MultiNodeStakeError, ZeroAmountError, InsufficientDelegation} from "./SystemContractErrors.sol";
+import {Unauthorized, InsufficientFunds, SelfStake, SelfUnstake, MultiNodeStakeError, ZeroAmountError, InsufficientStake, InsufficientDelegation, CreatorLimitReached} from "./SystemContractErrors.sol";
 
 /**
  * @author Matter Labs
@@ -38,8 +39,10 @@ contract L2BaseToken is IBaseToken, SystemContractBase {
         _;
     }
 
-    function stake(address _to, uint256 _amount) external override {
+    function stake(address _to) external payable override {
         if(msg.sender == _to) revert SelfStake();
+
+        uint256 _amount = msg.value;
 
         if (balance[msg.sender] < _amount) revert InsufficientFunds(_amount, balance[msg.sender]);
 
@@ -103,7 +106,7 @@ contract L2BaseToken is IBaseToken, SystemContractBase {
     }
 
     function unstake(address _from) external override {
-        _unstake(_from, _delegation[msg.sender][_from];);
+        _unstake(_from, _delegation[msg.sender][_from]);
     }
 
     function unstake(address _from, uint256 _amount) external override {
@@ -157,9 +160,9 @@ contract L2BaseToken is IBaseToken, SystemContractBase {
         emit Unstake(msg.sender, _from, _amount);
     }
 
-    function stakeAsNode(uint256 _amount) external override {
-        if (_amount < MINIMUM_STAKE) {
-            revert InsufficientStake(MINIMUM_STAKE, _amount);
+    function stakeAsNode(uint256 _amount) external {
+        if (_amount < MINIMUM_NODE_STAKE) {
+            revert InsufficientStake(MINIMUM_NODE_STAKE, _amount);
         }
 
         uint256 fromBalance = balance[msg.sender];
@@ -194,7 +197,7 @@ contract L2BaseToken is IBaseToken, SystemContractBase {
         emit NodeStake(_account, _amount);
     }
 
-    function unstakeAsNode() external override {
+    function unstakeAsNode() external {
         uint256 amount = nodes[msg.sender];
         if (amount == 0) {
             revert Unauthorized(msg.sender);

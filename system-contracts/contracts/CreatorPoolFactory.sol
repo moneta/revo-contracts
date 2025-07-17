@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.24;
+pragma solidity ^0.8.28;
 
 import {CreatorPool} from "./CreatorPool.sol";
 import {ICreatorPool} from "./interfaces/ICreatorPool.sol";
-import {IL2BaseToken} from "./interfaces/IL2BaseToken.sol";
+import {IBaseToken} from "./interfaces/IBaseToken.sol";
 import {INodeContract} from "./interfaces/INodeContract.sol";
 import {InvalidInput, PoolAlreadyCreated, TooBigCut, InvalidNode, TransferEthFailed} from "./SystemContractErrors.sol";
 
@@ -25,7 +25,7 @@ contract CreatorPoolFactory {
     }
 
     function createPool(address node, uint256 creatorCut) external payable returns (address poolAddr) {
-        if(creatorToPool[msg.sender] != address(0)) revert PoolAlreadyCreated();
+        if(creatorToPool[msg.sender] != address(0)) revert PoolAlreadyCreated(msg.sender);
 
         if(creatorCut > MAX_CREATOR_CUT) revert TooBigCut();
 
