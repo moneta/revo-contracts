@@ -90,6 +90,12 @@ error SystemCallFlagRequired();
 error TooMuchPubdata(uint256 limit, uint256 supplied);
 // 0x8e4a23d6
 error Unauthorized(address);
+// 0x4f78e517
+error CooldownActive();
+// 0xa5487bb1
+error NodeCutTooHigh();
+// 0x4e1a217c
+error CreatorLimitReached();
 // 0x3e5efef9
 error UnknownCodeHash(bytes32);
 // 0x9ba6061b
@@ -200,6 +206,42 @@ error InvalidNewL2BlockNumber(uint256 l2BlockNumber);
 
 // 0xe0a0dd23
 error InvalidNonceKey(uint192 nonceKey);
+
+//0x1db44c70
+error EmptyNodeSet();
+
+// 0xdcc9bfb9
+error SelfStake();
+
+// 0xc3ed70bf
+error SelfUnstake();
+
+// 0x5c8e2d7d
+error MultiNodeStakeError();
+
+// 0x6e0ccc07
+error ZeroAmountError();
+
+// 0x5d943c3c
+error TransferEthFailed();
+
+// 0x8b30e166
+error TooBigCut();
+
+// 0x45be0a26
+error InsufficientStake(uint256 required, uint256 actual);
+
+// 0x4e30c30a
+error InsufficientDelegation(uint256 required, uint256 actual);
+
+// 0x1fe543e3
+error InvalidCreator(address creator);
+
+// 0x11cd4f77
+error PoolAlreadyCreated(address creator);
+
+// 0x88c4fe8f
+error InvalidNode(address node);
 
 enum CodeHashReason {
     NotContractOnConstructor,

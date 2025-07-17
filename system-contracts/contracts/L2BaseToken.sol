@@ -1,12 +1,14 @@
 // SPDX-License-Identifier: MIT
 
-pragma solidity 0.8.28;
+pragma solidity 0.8.24;
 
-import {IBaseToken} from "./interfaces/IBaseToken.sol";
+import {IBaseToken, NODE_CONTRACT_ADDR} from "./interfaces/IBaseToken.sol";
+import {INodeContract} from "./interfaces/INodeContract.sol";
+import {ICreatorPool} from "./interfaces/ICreatorPool.sol";
 import {SystemContractBase} from "./abstract/SystemContractBase.sol";
 import {MSG_VALUE_SYSTEM_CONTRACT, DEPLOYER_SYSTEM_CONTRACT, BOOTLOADER_FORMAL_ADDRESS, L1_MESSENGER_CONTRACT} from "./Constants.sol";
 import {IMailbox} from "./interfaces/IMailbox.sol";
-import {Unauthorized, InsufficientFunds} from "./SystemContractErrors.sol";
+import {Unauthorized, InsufficientFunds, SelfStake, SelfUnstake, MultiNodeStakeError, ZeroAmountError, InsufficientDelegation} from "./SystemContractErrors.sol";
 
 /**
  * @author Matter Labs
@@ -17,11 +19,222 @@ import {Unauthorized, InsufficientFunds} from "./SystemContractErrors.sol";
  * to perform the balance changes while simulating the `msg.value` Ethereum behavior.
  */
 contract L2BaseToken is IBaseToken, SystemContractBase {
+    uint256 public constant MAX_CREATORS_PER_NODE = 200;
     /// @notice The balances of the users.
     mapping(address account => uint256 balance) internal balance;
 
     /// @notice The total amount of tokens that have been minted.
     uint256 public override totalSupply;
+
+    /// Revolution Upgrade
+    mapping(address => uint256) internal stakes;
+    mapping(address => uint256) internal delegated;
+    mapping(address => uint256) public nodes;
+    mapping(address => address) internal creatorPools;
+    mapping(address => mapping(address => uint256)) internal _delegation;
+
+    modifier onlyNodeContract() {
+        if (msg.sender != NODE_CONTRACT_ADDR) revert Unauthorized(msg.sender);
+        _;
+    }
+
+    function stake(address _to, uint256 _amount) external override {
+        if(msg.sender == _to) revert SelfStake();
+
+        if (balance[msg.sender] < _amount) revert InsufficientFunds(_amount, balance[msg.sender]);
+
+        if(_amount == 0) revert ZeroAmountError();
+
+        if (INodeContract(NODE_CONTRACT_ADDR).isNode(_to) && creatorPools[msg.sender] != _to) {    
+            // don't allow creator stake to different nodes at the same time
+            revert MultiNodeStakeError();
+        }
+
+        unchecked {
+            balance[msg.sender] -= _amount;
+            stakes[msg.sender] += _amount;
+            _delegation[msg.sender][_to] += _amount;
+            // Overflow not possible: the sum of all balances is capped by totalSupply, and the sum is preserved by
+            // decrementing then incrementing.
+        }
+
+        if (INodeContract(NODE_CONTRACT_ADDR).isNode(_to)) {    
+            // Check for new creator registering
+            if (creatorPools[msg.sender] == address(0)) {       // msg.sender is not creator
+                address lowestDelegator;
+                uint256 minDelegation;
+
+                (lowestDelegator, minDelegation) = INodeContract(NODE_CONTRACT_ADDR).getLowestDelegator(_to);
+
+                if (INodeContract(NODE_CONTRACT_ADDR).getNodeDelegatorCount(_to) >= MAX_CREATORS_PER_NODE) {
+                    uint256 newDelegation = delegated[msg.sender] + _amount;
+
+                    if (newDelegation > minDelegation) {
+                        INodeContract(NODE_CONTRACT_ADDR).decreaseDelegation(_to, lowestDelegator, minDelegation);
+                        delete creatorPools[lowestDelegator];
+                        emit RevokeCreatorPool(lowestDelegator, _to);
+                    } else {
+                        revert CreatorLimitReached();
+                    }
+                }
+
+                INodeContract(NODE_CONTRACT_ADDR).increaseDelegation(_to, msg.sender, delegated[msg.sender] + _amount);
+                creatorPools[msg.sender] = _to;
+                emit GrantCreatorPool(msg.sender, _to);
+            } else {
+                INodeContract(NODE_CONTRACT_ADDR).increaseDelegation(_to, msg.sender, _amount);
+            }
+        } else {
+            unchecked {
+                delegated[_to] += _amount;
+            }
+
+            // fan's staking
+            address node = creatorPools[_to];
+            if (node != address(0)) {
+                INodeContract(NODE_CONTRACT_ADDR).increaseDelegation(node, _to, _amount);
+            }
+
+            // Update CreatorPool stake record
+            ICreatorPool(_to).updateFanStake(msg.sender, _delegation[msg.sender][_to]);
+        }
+
+        emit Stake(msg.sender, _to, _amount);
+    }
+
+    function unstake(address _from) external override {
+        _unstake(_from, _delegation[msg.sender][_from];);
+    }
+
+    function unstake(address _from, uint256 _amount) external override {
+        _unstake(_from, _amount);
+    }
+    
+    /// @notice Unstake tokens from one address to another.
+    /// @param _from The address to unstake the ETH from.
+    /// @param _amount The amount of ETH in wei being unstake.
+    function _unstake(address _from, uint256 _amount) internal {
+        if(_amount == 0) {
+            revert ZeroAmountError();
+        }
+        if(msg.sender == _from) {
+            revert SelfUnstake();
+        }
+        uint256 fromStake = _delegation[msg.sender][_from];
+        if (fromStake < _amount) {
+            revert InsufficientDelegation(_amount, fromStake);
+        }
+        unchecked {
+            _delegation[msg.sender][_from] -= _amount;
+            stakes[msg.sender] -= _amount;
+            balance[msg.sender] += _amount;
+            if (_delegation[msg.sender][_from] == 0) {
+                delete _delegation[msg.sender][_from];
+            }
+        }
+        if (INodeContract(NODE_CONTRACT_ADDR).isNode(_from)) { // creator unstake from node
+            if (_delegation[msg.sender][_from] == 0) {
+                INodeContract(NODE_CONTRACT_ADDR).decreaseDelegation(_from, msg.sender, delegated[msg.sender] + _amount);
+                
+                delete creatorPools[msg.sender];
+                emit RevokeCreatorPool(msg.sender, _from);
+            } else {
+                INodeContract(NODE_CONTRACT_ADDR).decreaseDelegation(_from, msg.sender, _amount);
+            }
+        } else { // Fan unstake from creator
+            unchecked {
+                delegated[_from] -= _amount;
+            }
+            address node = creatorPools[_from];
+            if (node != address(0)) {
+                INodeContract(NODE_CONTRACT_ADDR).decreaseDelegation(node, _from, _amount);
+            }
+
+            // Update CreatorPool stake record
+            ICreatorPool(_from).updateFanStake(msg.sender, _delegation[msg.sender][_from]);
+        }
+
+        emit Unstake(msg.sender, _from, _amount);
+    }
+
+    function stakeAsNode(uint256 _amount) external override {
+        if (_amount < MINIMUM_STAKE) {
+            revert InsufficientStake(MINIMUM_STAKE, _amount);
+        }
+
+        uint256 fromBalance = balance[msg.sender];
+        if (fromBalance < _amount) {
+            revert InsufficientFunds(_amount, fromBalance);
+        }
+
+        unchecked {
+            balance[msg.sender] = fromBalance - _amount;
+            stakes[msg.sender] += _amount;
+            nodes[msg.sender] += _amount;
+        }
+
+        // Notify the node registry AFTER local state updates succeed
+        INodeContract(NODE_CONTRACT_ADDR).onNodeStaked{gas: 1000000}(msg.sender, _amount);
+
+        emit NodeStake(msg.sender, _amount);
+    }
+
+
+    function addNodeStake(address _account, uint256 _amount) external onlyNodeContract {
+        uint256 fromBalance = balance[_account];
+        if (fromBalance < _amount) {
+            revert InsufficientFunds(_amount, fromBalance);
+        }
+
+        unchecked {
+            balance[_account] = fromBalance - _amount;
+            stakes[_account] += _amount;
+            nodes[_account] += _amount;
+        }
+        emit NodeStake(_account, _amount);
+    }
+
+    function unstakeAsNode() external override {
+        uint256 amount = nodes[msg.sender];
+        if (amount == 0) {
+            revert Unauthorized(msg.sender);
+        }
+
+        unchecked {
+            balance[msg.sender] += amount;
+            stakes[msg.sender] -= amount;
+            delete nodes[msg.sender];
+        }
+
+        INodeContract(NODE_CONTRACT_ADDR).onNodeUnstaked(msg.sender);
+
+        emit NodeUnstake(msg.sender, amount);
+    }
+    
+    function removeNodeStake(address _account) external {
+        if (msg.sender != NODE_CONTRACT_ADDR) {
+            revert Unauthorized(msg.sender);
+        }
+        uint256 amount = nodes[_account];
+        unchecked {
+            balance[_account] += amount;
+            stakes[_account] -= amount;
+            delete nodes[_account];
+        }
+        emit NodeUnstake(_account, amount);
+    }
+
+    function stakeOf(address _account) external view override returns (uint256) {
+        return stakes[_account];
+    }
+    
+    function delegatedTo(address _account) external view override returns (uint256) {
+        return delegated[_account];
+    }
+    
+    function delegation(address _from, address _to) external view override returns (uint256) {
+        return _delegation[_from][_to];
+    }
 
     /// @notice Transfer tokens from one address to another.
     /// @param _from The address to transfer the ETH from.
