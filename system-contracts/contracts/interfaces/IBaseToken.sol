@@ -4,7 +4,26 @@ pragma solidity ^0.8.20;
 
 /// @author Matter Labs
 /// @custom:security-contact security@matterlabs.dev
+
+address constant NODE_CONTRACT_ADDR = 0x0000000000000000000000000000000000001116;
+
 interface IBaseToken {
+    function stake(address _to, uint256 _amount) external;
+
+    function unstake(address _from) external;
+    
+    function unstake(address _from, uint256 _amount) external;
+
+    function addNodeStake(address node, uint256 amount) external;
+
+    function removeNodeStake(address node) external;
+
+    function stakeOf(address _account) external view returns (uint256);
+    
+    function delegatedTo(address _account) external view returns (uint256);
+
+    function delegation(address _from, address _to) external view returns (uint256);
+
     function balanceOf(uint256) external view returns (uint256);
 
     function transferFromTo(address _from, address _to, uint256 _amount) external;
@@ -29,4 +48,16 @@ interface IBaseToken {
         uint256 _amount,
         bytes _additionalData
     );
+
+    event GrantCreatorPool(address indexed pool, address indexed node);
+    
+    event RevokeCreatorPool(address indexed pool, address indexed node);
+    
+    event Stake(address indexed from, address indexed pool, uint256 value);
+    
+    event Unstake(address indexed from, address indexed pool, uint256 value);
+    
+    event NodeStake(address indexed node, uint256 value);
+    
+    event NodeUnstake(address indexed node, uint256 value);
 }

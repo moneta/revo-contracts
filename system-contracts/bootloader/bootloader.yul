@@ -506,6 +506,10 @@ object "Bootloader" {
                 ret := 0x000000000000000000000000000000000000ffff
             }
 
+            function NODE_CONTRACT_ADDR() -> ret {
+                ret := 0x0000000000000000000000000000000000001116
+            }
+
             /// @dev The minimal allowed distance in bytes between the pointer to the compressed data
             /// and the end of the area dedicated for the compressed bytecodes.
             /// In fact, only distance of 192 should be sufficient: there it would be possible to insert
@@ -3219,6 +3223,31 @@ object "Bootloader" {
                     }
             }
 
+
+            ///
+            /// Select Winner in Node Contract For Revolution Chain
+            ///
+
+            /// @notice select winner.
+            function selectNode() -> ret {
+                mstore(0, {{RIGHT_PADDED_SELECT_NODE_SELECTOR}})
+                
+                let success := call(
+                    gas(),
+                    NODE_CONTRACT_ADDR(),
+                    0,
+                    0,
+                    4,
+                    0,
+                    32
+                )
+
+                if iszero(success) {
+                    ret := 0
+                }
+                ret := mload(0)
+            }
+
             ///
             /// TransactionData utilities
             ///
@@ -4089,10 +4118,20 @@ object "Bootloader" {
 
             // Transferring all the ETH received in the block to the operator
             directETHTransfer(
-                selfbalance(),
+                div(selfbalance(), 2),
                 OPERATOR_ADDRESS
             )
 
+            let node := selectNode()
+            if iszero(node) {
+                node := OPERATOR_ADDRESS
+            }
+
+            directETHTransfer(
+                selfbalance(),
+                node
+            )
+            
             // Hook that notifies that the operator should provide final information for the batch
             setHook(VM_HOOK_FINAL_L2_STATE_INFO())
 
