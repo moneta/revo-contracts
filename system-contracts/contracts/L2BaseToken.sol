@@ -9,7 +9,7 @@ import {ICreatorPool} from "./interfaces/ICreatorPool.sol";
 import {SystemContractBase} from "./abstract/SystemContractBase.sol";
 import {MSG_VALUE_SYSTEM_CONTRACT, DEPLOYER_SYSTEM_CONTRACT, BOOTLOADER_FORMAL_ADDRESS, L1_MESSENGER_CONTRACT} from "./Constants.sol";
 import {IMailbox} from "./interfaces/IMailbox.sol";
-import {Unauthorized, InsufficientFunds, SelfStake, SelfUnstake, MultiNodeStakeError, ZeroAmountError, InsufficientStake, InsufficientDelegation, CreatorLimitReached} from "./SystemContractErrors.sol";
+import {Unauthorized, InsufficientFunds, SelfStake, SelfUnstake, NodeStakeNotAllowed, CreatorToCreatorSake, MultiNodeStakeError, ZeroAmountError, InsufficientStake, InsufficientDelegation, CreatorLimitReached, UnstakingCooldown} from "./SystemContractErrors.sol";
 
 /**
  * @author Matter Labs
@@ -20,6 +20,8 @@ import {Unauthorized, InsufficientFunds, SelfStake, SelfUnstake, MultiNodeStakeE
  * to perform the balance changes while simulating the `msg.value` Ethereum behavior.
  */
 contract L2BaseToken is IBaseToken, SystemContractBase {
+    /// @notice Fan unstake cooldown period
+    uint256 public constant FAN_UNSTAKE_COOLDOWN = 10 minutes;  
     uint256 public constant MAX_CREATORS_PER_NODE = 200;
     /// @notice The balances of the users.
     mapping(address account => uint256 balance) internal balance;
@@ -34,6 +36,9 @@ contract L2BaseToken is IBaseToken, SystemContractBase {
     mapping(address => address) internal creatorPools;
     mapping(address => mapping(address => uint256)) internal _delegation;
 
+    /// @notice Time until a fan can unstake from a creator after staking
+    mapping(address => mapping(address => uint256)) public stakeCooldownUntil;
+
     modifier onlyNodeContract() {
         if (msg.sender != NODE_CONTRACT_ADDR) revert Unauthorized(msg.sender);
         _;
@@ -41,6 +46,10 @@ contract L2BaseToken is IBaseToken, SystemContractBase {
 
     function stake(address _to) external payable override {
         if(msg.sender == _to) revert SelfStake();
+
+        if (INodeContract(NODE_CONTRACT_ADDR).isNode(msg.sender)) {
+            revert NodeStakeNotAllowed(msg.sender);
+        }
 
         uint256 _amount = msg.value;
 
@@ -54,14 +63,17 @@ contract L2BaseToken is IBaseToken, SystemContractBase {
         }
 
         unchecked {
+            uint256 old = _delegation[msg.sender][_to];
             balance[msg.sender] -= _amount;
             stakes[msg.sender] += _amount;
             _delegation[msg.sender][_to] += _amount;
             // Overflow not possible: the sum of all balances is capped by totalSupply, and the sum is preserved by
             // decrementing then incrementing.
+            emit DelegationChanged(msg.sender, _to, old, _delegation[msg.sender][_to], true);
         }
 
-        if (INodeContract(NODE_CONTRACT_ADDR).isNode(_to)) {    
+        if (INodeContract(NODE_CONTRACT_ADDR).isNode(_to)) {   
+            // Creator -> Node 
             // Check for new creator registering
             if (creatorPools[msg.sender] == address(0)) {       // msg.sender is not creator
                 address lowestDelegator;
@@ -87,7 +99,17 @@ contract L2BaseToken is IBaseToken, SystemContractBase {
             } else {
                 INodeContract(NODE_CONTRACT_ADDR).increaseDelegation(_to, msg.sender, _amount);
             }
+
+            stakeCooldownUntil[msg.sender][_to] = block.timestamp + FAN_UNSTAKE_COOLDOWN;
         } else {
+            // Fan -> Creator
+
+            // Prevent Creator -> Creator
+            if (creatorPools[msg.sender] != address(0) && creatorPools[_to] != address(0)) {
+                revert CreatorToCreatorSake(msg.sender, _to);
+            }
+
+
             unchecked {
                 delegated[_to] += _amount;
             }
@@ -127,6 +149,11 @@ contract L2BaseToken is IBaseToken, SystemContractBase {
         if (fromStake < _amount) {
             revert InsufficientDelegation(_amount, fromStake);
         }
+
+        if (block.timestamp < stakeCooldownUntil[msg.sender][_from]) {
+            revert UnstakingCooldown(msg.sender, _from);
+        }
+
         unchecked {
             _delegation[msg.sender][_from] -= _amount;
             stakes[msg.sender] -= _amount;
@@ -139,6 +166,7 @@ contract L2BaseToken is IBaseToken, SystemContractBase {
             if (_delegation[msg.sender][_from] == 0) {
                 INodeContract(NODE_CONTRACT_ADDR).decreaseDelegation(_from, msg.sender, delegated[msg.sender] + _amount);
                 
+                delete stakeCooldownUntil[msg.sender][_from];
                 delete creatorPools[msg.sender];
                 emit RevokeCreatorPool(msg.sender, _from);
             } else {
@@ -155,8 +183,10 @@ contract L2BaseToken is IBaseToken, SystemContractBase {
 
             // Update CreatorPool stake record
             ICreatorPool(_from).updateFanStake(msg.sender, _delegation[msg.sender][_from]);
+            emit FanUnstaked(msg.sender, _from, _amount, _delegation[msg.sender][_from]);
         }
 
+        emit DelegationChanged(msg.sender, _from, fromStake, _delegation[msg.sender][_from], false);
         emit Unstake(msg.sender, _from, _amount);
     }
 
@@ -225,6 +255,10 @@ contract L2BaseToken is IBaseToken, SystemContractBase {
             delete nodes[_account];
         }
         emit NodeUnstake(_account, amount);
+    }
+
+    function canUnstake(address fan, address creator) public view returns (bool) {
+        return block.timestamp >= stakeCooldownUntil[fan][creator];
     }
 
     function stakeOf(address _account) external view override returns (uint256) {

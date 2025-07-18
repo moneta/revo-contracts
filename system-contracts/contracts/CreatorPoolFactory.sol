@@ -16,7 +16,7 @@ contract CreatorPoolFactory {
 
     uint256 public constant MAX_CREATOR_CUT = 10000;
 
-    event CreatorPoolCreated(address indexed creator, address indexed pool, address indexed node, uint256 creatorCut);
+    event CreatorPoolCreated(address indexed creator, address indexed pool, address indexed node, uint256 creatorCut, string poolName);
 
     constructor(address _baseToken, address _nodeContract) {
         if(_baseToken == address(0) || _nodeContract == address(0)) revert InvalidInput();
@@ -24,7 +24,7 @@ contract CreatorPoolFactory {
         nodeContract = _nodeContract;
     }
 
-    function createPool(address node, uint256 creatorCut) external payable returns (address poolAddr) {
+    function createPool(address node, uint256 creatorCut, string calldata poolName) external payable returns (address poolAddr) {
         if(creatorToPool[msg.sender] != address(0)) revert PoolAlreadyCreated(msg.sender);
 
         if(creatorCut > MAX_CREATOR_CUT) revert TooBigCut();
@@ -32,7 +32,8 @@ contract CreatorPoolFactory {
         if(!INodeContract(nodeContract).isNode(node)) revert InvalidNode(node);
 
         // Deploy pool contract
-        CreatorPool pool = new CreatorPool(baseToken, node, address(this), msg.sender, creatorCut);
+        CreatorPool pool = new CreatorPool(baseToken, node, address(this), msg.sender, creatorCut, poolName);
+
         poolAddr = address(pool);
 
         // Track this pool before attempting stake to avoid race conditions
@@ -41,7 +42,7 @@ contract CreatorPoolFactory {
 
         // Stake to node and register the pool
         try pool.registerAsCreatorPool{value: msg.value}() {
-            emit CreatorPoolCreated(msg.sender, poolAddr, node, creatorCut);
+            emit CreatorPoolCreated(msg.sender, poolAddr, node, creatorCut, poolName);
         } catch {
             // Rollback pool mapping and list
             delete creatorToPool[msg.sender];

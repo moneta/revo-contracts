@@ -96,6 +96,8 @@ error CooldownActive();
 error NodeCutTooHigh();
 // 0x4e1a217c
 error CreatorLimitReached();
+// 0x259d86af
+error UnstakingCooldown(address account, address creator);
 // 0x3e5efef9
 error UnknownCodeHash(bytes32);
 // 0x9ba6061b
@@ -213,8 +215,14 @@ error EmptyNodeSet();
 // 0xdcc9bfb9
 error SelfStake();
 
+// 0x6e067d2c
+error NodeStakeNotAllowed(address node);
+
 // 0xc3ed70bf
 error SelfUnstake();
+
+// 0x6057e79c
+error CreatorToCreatorSake(address fromCreator, address toCreator);
 
 // 0x5c8e2d7d
 error MultiNodeStakeError();

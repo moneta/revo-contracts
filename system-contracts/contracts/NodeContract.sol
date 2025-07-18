@@ -32,7 +32,7 @@ contract NodeContract is INodeContract, ReentrancyGuard {
     mapping(address => uint256) public nodeCutBps;
     mapping(address => address[]) public nodeDelegators;                // node => list of creator addresses
     mapping(address => mapping(address => bool)) public isDelegator;    // prevent duplication
-    mapping(address => uint256) public creatorRewardBalance;            // unclaimed rewards
+    mapping(address => uint256) public creatorPendingReward;            // unclaimed rewards
     mapping(address => uint256) public nodeTotalDelegation;             // node => total delegated from creators
     mapping(address => uint256) public pendingGuarantorRefunds;
 
@@ -75,13 +75,15 @@ contract NodeContract is INodeContract, ReentrancyGuard {
     function _removeCreatorFromNode(address node, address creator) internal {
         address[] storage list = nodeDelegators[node];
         uint256 len = list.length;
-        for (uint256 i = 0; i < len; i++) {
+        for (uint256 i = 0; i < len; ) {
             if (list[i] == creator) {
                 list[i] = list[len - 1];
                 list.pop();
                 isDelegator[node][creator] = false;
                 return;
             }
+
+            unchecked { ++i; }
         }
     }
 
@@ -117,10 +119,11 @@ contract NodeContract is INodeContract, ReentrancyGuard {
 
             (bool success, ) = creator.call{value: share}("");
             if (!success) {
+                creatorPendingReward[creator] += share;
                 emit RewardTransferFailed(creator, share);
+            } else {
+                emit CreatorRewardPaid(creator, node, share);
             }
-
-            emit CreatorRewardPaid(creator, node, share);
         }
 
         // Refund any leftover (due to division rounding) to node
@@ -129,6 +132,21 @@ contract NodeContract is INodeContract, ReentrancyGuard {
             (bool ok, ) = node.call{value: remainder}("");
             if (!ok) revert TransferEthFailed();
         }
+    }
+
+    function claimPendingReward() external nonReentrant {
+        uint256 amount = creatorPendingReward[msg.sender];
+        if (amount == 0) revert ZeroAmountError();
+
+        creatorPendingReward[msg.sender] = 0;
+
+        (bool success, ) = msg.sender.call{value: amount}("");
+        if (!success) {
+            creatorPendingReward[msg.sender] = amount; // restore on failure
+            revert TransferEthFailed();
+        }
+
+        emit RewardClaimed(msg.sender, amount);
     }
 
     // implement only bootloader
@@ -172,12 +190,14 @@ contract NodeContract is INodeContract, ReentrancyGuard {
         _maxP = type(int256).min;
         _minP = type(int256).max;
 
-        for (uint256 i=0; i<nodes.length; i++) {
+        for (uint256 i=0; i<nodes.length; ) {
             NodeData storage node = nodeSet[nodes[i]];
             node.priority += int256(node.stakeAmount);
 
             _totalP += int256(node.stakeAmount);
             if (_updateMinMaxP(node.priority) == 1) winnerIndex = i; // 1: update maxP
+
+            unchecked { ++i; }
         }
 
         address winner = nodes[winnerIndex];
@@ -188,9 +208,11 @@ contract NodeContract is INodeContract, ReentrancyGuard {
     function _selectNodeInRange(int256 scale) internal returns (address) {
         int256 sum = 0;
         
-        for (uint256 i=0; i<nodes.length; i++) {
+        for (uint256 i=0; i<nodes.length; ) {
             nodeSet[nodes[i]].priority = nodeSet[nodes[i]].priority * SCALE_FACTOR  / scale;
             sum += nodeSet[nodes[i]].priority;
+
+            unchecked { ++i; }
         }
 
         int256 avg = sum / int256(nodes.length);
@@ -199,7 +221,7 @@ contract NodeContract is INodeContract, ReentrancyGuard {
         _totalP = 0;
         _maxP = type(int256).min;
         _minP = type(int256).max;
-        for (uint256 i=0; i<nodes.length; i++) {
+        for (uint256 i=0; i<nodes.length; ) {
             NodeData storage node = nodeSet[nodes[i]];
             node.priority -= avg;
             node.priority += int256(node.stakeAmount);
@@ -207,6 +229,8 @@ contract NodeContract is INodeContract, ReentrancyGuard {
             _totalP += int256(node.stakeAmount);
             
             if (_updateMinMaxP(node.priority) == 1) winnerIndex = i;
+
+            unchecked { ++i; }
         }
 
         address winner = nodes[winnerIndex];
@@ -240,7 +264,7 @@ contract NodeContract is INodeContract, ReentrancyGuard {
                 revert InsufficientDelegation(nodeSet[nodes[index]].stakeAmount, totalStakeAmount);
             }
 
-            _unstake(nodes[index]); // safe internal cleanup
+            _unstake(nodes[index], true); // safe internal cleanup
         }
 
         int256 priority = selectedOnce
@@ -261,7 +285,7 @@ contract NodeContract is INodeContract, ReentrancyGuard {
 
 
     function onNodeUnstaked(address node) external onlyL2BaseToken {
-        _unstake(node); // local-only cleanup
+        _unstake(node, false); // local-only cleanup
     }
 
 
@@ -307,7 +331,7 @@ contract NodeContract is INodeContract, ReentrancyGuard {
         return data.stakeAmount;
     }
 
-    function _unstake(address node) internal {
+    function _unstake(address node, bool evicted) internal {
         NodeData memory data = nodeSet[node];
         if (data.stakeAmount == 0) {
             revert Unauthorized(msg.sender);
@@ -326,23 +350,41 @@ contract NodeContract is INodeContract, ReentrancyGuard {
             _movePriorityByAvg();
         }
 
+        emit NodeRemoved(
+            node,
+            data.stakeAmount,
+            nodeTotalDelegation[node],
+            nodeDelegators[node].length,
+            evicted // if evicted, or false if voluntary
+        );
+
+        delete nodeCutBps[node];
+        delete nodeTotalDelegation[node];
+        address[] storage list = nodeDelegators[node];
+        uint256 len = list.length;
+        for (uint256 i = len; i > 0; i--) {
+            address creator = list[i - 1] ;
+            isDelegator[node][creator] = false;
+            list.pop();
+        }
         delete nodeSet[node];
-        emit NodeRemoved(node, data.stakeAmount);
     }
 
     function _movePriorityByAvg() internal {
         int256 sum = 0;
 
-        for (uint256 i=0; i<nodes.length; i++) {
+        for (uint256 i=0; i<nodes.length; ) {
             sum += nodeSet[nodes[i]].priority;
+            unchecked { ++i; }
         }
         int256 avg = sum / int256(nodes.length);
 
-        for (uint256 i=0; i<nodes.length; i++) {
+        for (uint256 i=0; i<nodes.length; ) {
             NodeData storage node = nodeSet[nodes[i]];
             node.priority -= avg;
             
             _updateMinMaxP(node.priority);
+            unchecked { ++i; }
         }
     }
 

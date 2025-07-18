@@ -17,7 +17,8 @@ contract CreatorPool is ReentrancyGuard {
     address public immutable factory;
     address public immutable creator;
     uint256 public creatorCut; // out of 10000 (e.g., 2000 = 20%)
-  
+    string public poolName;
+
     uint256 public totalStaked;
     uint256 public accRewardPerShare;
     mapping(address => uint256) public fanStakes;
@@ -44,7 +45,7 @@ contract CreatorPool is ReentrancyGuard {
         _;
     }
 
-    constructor(address _baseToken, address _node, address _factory, address _creator, uint256 _creatorCut) {
+    constructor(address _baseToken, address _node, address _factory, address _creator, uint256 _creatorCut, string memory _poolName ) {
         if(_baseToken == address(0) || _node == address(0)) revert InvalidInput();
 
         if(_creator == address(0)) revert InvalidCreator(_creator);
@@ -56,6 +57,7 @@ contract CreatorPool is ReentrancyGuard {
         factory = _factory;
         creator = _creator;
         creatorCut = _creatorCut;
+        poolName = _poolName;
     }
 
     function isValidCreatorCut(uint256 cut) public pure returns (bool) {

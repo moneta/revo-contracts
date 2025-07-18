@@ -43,10 +43,19 @@ interface INodeContract {
     event NewNode(address indexed node);
 
     event NodeSelected(address indexed node);
+
+    event RewardClaimed(address node, uint256 amount);
     
     event RewardDeposit(address payer, uint256 amount);
     
     event RewardWithdrawal(address receiver, uint256 amount);
 
-    event NodeRemoved(address indexed node, uint256 finalStake);
+    event NodeRemoved(
+        address indexed node,
+        uint256 finalStakeAmount,
+        uint256 totalDelegation,
+        uint256 creatorCount,
+        bool evicted
+    );
+
 }

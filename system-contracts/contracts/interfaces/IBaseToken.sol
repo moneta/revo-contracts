@@ -54,8 +54,18 @@ interface IBaseToken {
     event Stake(address indexed from, address indexed pool, uint256 value);
     
     event Unstake(address indexed from, address indexed pool, uint256 value);
+
+    event FanUnstaked(address indexed fan, address indexed creator, uint256 unstakedAmount, uint256 remainingStake);
     
     event NodeStake(address indexed node, uint256 value);
     
     event NodeUnstake(address indexed node, uint256 value);
+
+    event DelegationChanged(
+        address indexed delegator,
+        address indexed delegatee,
+        uint256 oldAmount,
+        uint256 newAmount,
+        bool increased
+    );
 }
