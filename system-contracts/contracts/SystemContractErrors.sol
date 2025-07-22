@@ -248,6 +248,9 @@ error InvalidCreator(address creator);
 // 0x11cd4f77
 error PoolAlreadyCreated(address creator);
 
+// 0x7b84e058
+error PoolRegistrationError();
+
 // 0x88c4fe8f
 error InvalidNode(address node);
 

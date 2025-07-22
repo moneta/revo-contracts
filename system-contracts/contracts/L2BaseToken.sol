@@ -69,7 +69,14 @@ contract L2BaseToken is IBaseToken, SystemContractBase {
             _delegation[msg.sender][_to] += _amount;
             // Overflow not possible: the sum of all balances is capped by totalSupply, and the sum is preserved by
             // decrementing then incrementing.
-            emit DelegationChanged(msg.sender, _to, old, _delegation[msg.sender][_to], true);
+
+            emit DelegationChanged({
+                delegator: msg.sender, 
+                delegatee: _to,
+                oldAmount: old,
+                newAmount: _delegation[msg.sender][_to],
+                increased: true
+            });
         }
 
         if (INodeContract(NODE_CONTRACT_ADDR).isNode(_to)) {   
@@ -186,7 +193,13 @@ contract L2BaseToken is IBaseToken, SystemContractBase {
             emit FanUnstaked(msg.sender, _from, _amount, _delegation[msg.sender][_from]);
         }
 
-        emit DelegationChanged(msg.sender, _from, fromStake, _delegation[msg.sender][_from], false);
+        emit DelegationChanged({
+            delegator: msg.sender,
+            delegatee: _from,
+            oldAmount: fromStake,
+            newAmount: _delegation[msg.sender][_from],
+            increased: false
+        });
         emit Unstake(msg.sender, _from, _amount);
     }
 

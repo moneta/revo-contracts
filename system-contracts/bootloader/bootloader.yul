@@ -507,7 +507,7 @@ object "Bootloader" {
             }
 
             function NODE_CONTRACT_ADDR() -> ret {
-                ret := 0x0000000000000000000000000000000000001116
+                ret := 0x00000000000000000000000000000000000080ff
             }
 
             /// @dev The minimal allowed distance in bytes between the pointer to the compressed data

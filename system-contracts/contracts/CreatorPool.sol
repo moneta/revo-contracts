@@ -4,7 +4,7 @@ pragma solidity ^0.8.28;
 import {ReentrancyGuard} from "../lib/openzeppelin-contracts-v4/contracts/security/ReentrancyGuard.sol";
 import {InvalidInput, InvalidCreator, Unauthorized, TooBigCut, ZeroAmountError, TransferEthFailed} from "./SystemContractErrors.sol";
 import {IBaseToken} from "./interfaces/IBaseToken.sol";
-import {NODE_CONTRACT_ADDR} from "./Constants.sol";
+import {BASE_TOKEN_ADDRESS, NODE_CONTRACT_ADDR} from "./Constants.sol";
 
 /// @title CreatorPool
 /// @notice A smart contract pool where fans can stake to support creators who have staked to a node.
@@ -12,10 +12,9 @@ contract CreatorPool is ReentrancyGuard {
     uint256 public constant PRECISION = 1e12;
     uint256 public constant MAX_CREATOR_CUT = 10000; // 100% in basis points
 
-    address public immutable baseToken;
-    address public immutable node;
-    address public immutable factory;
-    address public immutable creator;
+    address public immutable NODE;
+    address public immutable FACTORY;
+    address public immutable CREATOR;
     uint256 public creatorCut; // out of 10000 (e.g., 2000 = 20%)
     string public poolName;
 
@@ -31,12 +30,12 @@ contract CreatorPool is ReentrancyGuard {
     event RewardClaimed(address indexed fan, uint256 amount);
 
     modifier onlyFactory() {
-        if(msg.sender != factory) revert Unauthorized(msg.sender);
+        if(msg.sender != FACTORY) revert Unauthorized(msg.sender);
         _;
     }
 
     modifier onlyBaseToken() {
-        if(msg.sender != baseToken) revert Unauthorized(msg.sender);
+        if(msg.sender != BASE_TOKEN_ADDRESS) revert Unauthorized(msg.sender);
         _;
     }
 
@@ -45,17 +44,16 @@ contract CreatorPool is ReentrancyGuard {
         _;
     }
 
-    constructor(address _baseToken, address _node, address _factory, address _creator, uint256 _creatorCut, string memory _poolName ) {
-        if(_baseToken == address(0) || _node == address(0)) revert InvalidInput();
+    constructor(address _node, address _factory, address _creator, uint256 _creatorCut, string memory _poolName ) {
+        if(_node == address(0)) revert InvalidInput();
 
         if(_creator == address(0)) revert InvalidCreator(_creator);
 
         if(_creatorCut > MAX_CREATOR_CUT) revert TooBigCut();
 
-        baseToken = _baseToken;
-        node = _node;
-        factory = _factory;
-        creator = _creator;
+        NODE = _node;
+        FACTORY = _factory;
+        CREATOR = _creator;
         creatorCut = _creatorCut;
         poolName = _poolName;
     }
@@ -68,8 +66,8 @@ contract CreatorPool is ReentrancyGuard {
     function registerAsCreatorPool() external payable nonReentrant onlyFactory {
         if (msg.value <= 0) revert ZeroAmountError();
 
-        IBaseToken(baseToken).stake{value: msg.value}(node);
-        emit StakeRegisteredToNode(node, msg.value);
+        IBaseToken(BASE_TOKEN_ADDRESS).stake{value: msg.value}(NODE);
+        emit StakeRegisteredToNode(NODE, msg.value);
     }
 
     /// @notice Update fan stake (called by L2BaseToken)
@@ -114,7 +112,7 @@ contract CreatorPool is ReentrancyGuard {
         }
 
         if (creatorShare > 0) {
-            (bool success, ) = creator.call{value: creatorShare}("");
+            (bool success, ) = CREATOR.call{value: creatorShare}("");
             if(!success) revert TransferEthFailed();
         }
     }

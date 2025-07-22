@@ -2,15 +2,11 @@
 pragma solidity ^0.8.28;
 
 import {CreatorPool} from "./CreatorPool.sol";
-import {ICreatorPool} from "./interfaces/ICreatorPool.sol";
-import {IBaseToken} from "./interfaces/IBaseToken.sol";
 import {INodeContract} from "./interfaces/INodeContract.sol";
-import {InvalidInput, PoolAlreadyCreated, TooBigCut, InvalidNode, TransferEthFailed} from "./SystemContractErrors.sol";
+import {PoolAlreadyCreated, TooBigCut, InvalidNode, TransferEthFailed, PoolRegistrationError} from "./SystemContractErrors.sol";
+import {NODE_CONTRACT_ADDR} from "./Constants.sol";
 
 contract CreatorPoolFactory {
-    address public immutable baseToken;
-    address public immutable nodeContract;
-
     mapping(address => address) public creatorToPool;
     address[] public allPools;
 
@@ -18,21 +14,21 @@ contract CreatorPoolFactory {
 
     event CreatorPoolCreated(address indexed creator, address indexed pool, address indexed node, uint256 creatorCut, string poolName);
 
-    constructor(address _baseToken, address _nodeContract) {
-        if(_baseToken == address(0) || _nodeContract == address(0)) revert InvalidInput();
-        baseToken = _baseToken;
-        nodeContract = _nodeContract;
-    }
-
     function createPool(address node, uint256 creatorCut, string calldata poolName) external payable returns (address poolAddr) {
         if(creatorToPool[msg.sender] != address(0)) revert PoolAlreadyCreated(msg.sender);
 
         if(creatorCut > MAX_CREATOR_CUT) revert TooBigCut();
 
-        if(!INodeContract(nodeContract).isNode(node)) revert InvalidNode(node);
+        if(!INodeContract(NODE_CONTRACT_ADDR).isNode(node)) revert InvalidNode(node);
 
         // Deploy pool contract
-        CreatorPool pool = new CreatorPool(baseToken, node, address(this), msg.sender, creatorCut, poolName);
+        CreatorPool pool = new CreatorPool({
+            _node: node, 
+            _factory: address(this), 
+            _creator: msg.sender, 
+            _creatorCut: creatorCut, 
+            _poolName: poolName
+        });
 
         poolAddr = address(pool);
 
@@ -42,7 +38,13 @@ contract CreatorPoolFactory {
 
         // Stake to node and register the pool
         try pool.registerAsCreatorPool{value: msg.value}() {
-            emit CreatorPoolCreated(msg.sender, poolAddr, node, creatorCut, poolName);
+            emit CreatorPoolCreated({
+                creator: msg.sender,
+                pool: poolAddr,
+                node: node,
+                creatorCut: creatorCut,
+                poolName: poolName
+            });
         } catch {
             // Rollback pool mapping and list
             delete creatorToPool[msg.sender];
@@ -52,7 +54,7 @@ contract CreatorPoolFactory {
             (bool refundSuccess, ) = msg.sender.call{value: msg.value}("");
             if(!refundSuccess) revert TransferEthFailed();
 
-            revert("Pool creation failed: stake registration reverted");
+            revert PoolRegistrationError();
         }
     }
 

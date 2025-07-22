@@ -4,13 +4,14 @@ pragma solidity 0.8.28;
 
 import {ReentrancyGuard} from "../lib/openzeppelin-contracts-v4/contracts/security/ReentrancyGuard.sol";
 import {IBaseToken} from "./interfaces/IBaseToken.sol";
-import {INodeContract, BASE_TOKEN_ADDR, NodeData, SCALE_FACTOR, PENALTY_FACTOR, BOOTLOADER_ADDR} from "./interfaces/INodeContract.sol";
-import {InsufficientStake, InsufficientDelegation, Unauthorized, CooldownActive, NodeCutTooHigh, CreatorLimitReached, EmptyNodeSet, ZeroAmountError, InvalidNode, TransferEthFailed} from "./SystemContractErrors.sol";
+import {INodeContract, NodeData, SCALE_FACTOR, PENALTY_FACTOR} from "./interfaces/INodeContract.sol";
+import {InsufficientDelegation, Unauthorized, CooldownActive, NodeCutTooHigh, CreatorLimitReached, EmptyNodeSet, ZeroAmountError, InvalidNode, TransferEthFailed} from "./SystemContractErrors.sol";
+import {BOOTLOADER_FORMAL_ADDRESS, BASE_TOKEN_ADDRESS} from "./Constants.sol";
 
 contract NodeContract is INodeContract, ReentrancyGuard {
     uint256 public constant MAX_NODE_NUMBER = 250;
     uint256 public constant MAX_CREATORS_PER_NODE = 200;
-    uint256 constant HALVING_BLOCKS = 5;
+    uint256 public constant HALVING_BLOCKS = 5;
     uint256 public constant GUARANTOR_COOLDOWN = 1 hours;   // or e.g., 3600 for 1hr
     
     uint256 public constant MAX_NODE_CUT_BPS = 5000;        // 50%
@@ -49,12 +50,12 @@ contract NodeContract is INodeContract, ReentrancyGuard {
     event RefundClaimed(address indexed guarantor, uint256 amount);
 
     modifier onlyBootloader() {
-        if (msg.sender != BOOTLOADER_ADDR) revert Unauthorized(msg.sender);
+        if (msg.sender != BOOTLOADER_FORMAL_ADDRESS) revert Unauthorized(msg.sender);
         _;
     }
 
     modifier onlyL2BaseToken() {
-        if (msg.sender != BASE_TOKEN_ADDR) revert Unauthorized(msg.sender);
+        if (msg.sender != BASE_TOKEN_ADDRESS) revert Unauthorized(msg.sender);
         _;
     }
 
@@ -109,9 +110,10 @@ contract NodeContract is INodeContract, ReentrancyGuard {
         address[] memory creators = nodeDelegators[node];
         uint256 distributed;
 
-        for (uint256 i = 0; i < creators.length; i++) {
+        uint256 len = creators.length;
+        for (uint256 i = 0; i < len; ) {
             address creator = creators[i];
-            uint256 creatorDelegation = IBaseToken(BASE_TOKEN_ADDR).delegation(creator, node);
+            uint256 creatorDelegation = IBaseToken(BASE_TOKEN_ADDRESS).delegation(creator, node);
             if (creatorDelegation == 0) continue;
 
             uint256 share = (creatorPool * creatorDelegation) / totalDelegation;
@@ -124,6 +126,7 @@ contract NodeContract is INodeContract, ReentrancyGuard {
             } else {
                 emit CreatorRewardPaid(creator, node, share);
             }
+            unchecked { ++i; }
         }
 
         // Refund any leftover (due to division rounding) to node
@@ -151,7 +154,7 @@ contract NodeContract is INodeContract, ReentrancyGuard {
 
     // implement only bootloader
     function selectNode() external override onlyBootloader returns (address winner) {
-        // if (msg.sender != BOOTLOADER_ADDR) {
+        // if (msg.sender != BOOTLOADER_FORMAL_ADDRESS) {
         //     revert Unauthorized(msg.sender);
         // }
         if (nodes.length == 0) {
@@ -177,7 +180,7 @@ contract NodeContract is INodeContract, ReentrancyGuard {
                 batchCount = 0;
                 batchReward = batchReward / 2;
             } else {
-                batchCount += 1;
+                ++batchCount;
             }
         }
 
@@ -190,7 +193,8 @@ contract NodeContract is INodeContract, ReentrancyGuard {
         _maxP = type(int256).min;
         _minP = type(int256).max;
 
-        for (uint256 i=0; i<nodes.length; ) {
+        uint256 len = nodes.length;
+        for (uint256 i = 0; i < len; ) {
             NodeData storage node = nodeSet[nodes[i]];
             node.priority += int256(node.stakeAmount);
 
@@ -208,20 +212,21 @@ contract NodeContract is INodeContract, ReentrancyGuard {
     function _selectNodeInRange(int256 scale) internal returns (address) {
         int256 sum = 0;
         
-        for (uint256 i=0; i<nodes.length; ) {
+        uint256 nodeCount = nodes.length;
+        for (uint256 i=0; i<nodeCount; ) {
             nodeSet[nodes[i]].priority = nodeSet[nodes[i]].priority * SCALE_FACTOR  / scale;
             sum += nodeSet[nodes[i]].priority;
 
             unchecked { ++i; }
         }
 
-        int256 avg = sum / int256(nodes.length);
+        int256 avg = sum / int256(nodeCount);
         uint256 winnerIndex;
 
         _totalP = 0;
         _maxP = type(int256).min;
         _minP = type(int256).max;
-        for (uint256 i=0; i<nodes.length; ) {
+        for (uint256 i=0; i<nodeCount; ) {
             NodeData storage node = nodeSet[nodes[i]];
             node.priority -= avg;
             node.priority += int256(node.stakeAmount);
@@ -254,7 +259,7 @@ contract NodeContract is INodeContract, ReentrancyGuard {
     }
 
     function onNodeStaked(address node, uint256 amount) external onlyL2BaseToken {
-        uint256 delegation = IBaseToken(BASE_TOKEN_ADDR).delegatedTo(node);
+        uint256 delegation = IBaseToken(BASE_TOKEN_ADDRESS).delegatedTo(node);
         uint256 totalStakeAmount = amount + delegation;
 
         // Optional eviction logic if full
@@ -323,7 +328,7 @@ contract NodeContract is INodeContract, ReentrancyGuard {
             nodeTotalDelegation[node] -= amount;
 
             // remove creator from list when balance hits zero (see below)
-            if (IBaseToken(BASE_TOKEN_ADDR).delegation(creator, node) == 0) {
+            if (IBaseToken(BASE_TOKEN_ADDRESS).delegation(creator, node) == 0) {
                 _removeCreatorFromNode(node, creator);
             }
         }
@@ -350,22 +355,23 @@ contract NodeContract is INodeContract, ReentrancyGuard {
             _movePriorityByAvg();
         }
 
-        emit NodeRemoved(
-            node,
-            data.stakeAmount,
-            nodeTotalDelegation[node],
-            nodeDelegators[node].length,
-            evicted // if evicted, or false if voluntary
-        );
+        emit NodeRemoved({
+            node: node,
+            finalStakeAmount: data.stakeAmount,
+            totalDelegation: nodeTotalDelegation[node],
+            creatorCount: nodeDelegators[node].length,
+            evicted: evicted // if evicted, or false if voluntary
+        });
 
         delete nodeCutBps[node];
         delete nodeTotalDelegation[node];
         address[] storage list = nodeDelegators[node];
         uint256 len = list.length;
-        for (uint256 i = len; i > 0; i--) {
+        for (uint256 i = len; i > 0; ) {
             address creator = list[i - 1] ;
             isDelegator[node][creator] = false;
             list.pop();
+            unchecked { --i; }
         }
         delete nodeSet[node];
     }
@@ -373,13 +379,14 @@ contract NodeContract is INodeContract, ReentrancyGuard {
     function _movePriorityByAvg() internal {
         int256 sum = 0;
 
-        for (uint256 i=0; i<nodes.length; ) {
+        uint256 nodeCount = nodes.length;
+        for (uint256 i=0; i<nodeCount; ) {
             sum += nodeSet[nodes[i]].priority;
             unchecked { ++i; }
         }
-        int256 avg = sum / int256(nodes.length);
+        int256 avg = sum / int256(nodeCount);
 
-        for (uint256 i=0; i<nodes.length; ) {
+        for (uint256 i=0; i<nodeCount; ) {
             NodeData storage node = nodeSet[nodes[i]];
             node.priority -= avg;
             
@@ -459,12 +466,14 @@ contract NodeContract is INodeContract, ReentrancyGuard {
 
         uint256 minD = type(uint256).max;
         uint256 minIndex;
-        for (uint256 i=0; i<nodes.length; i++) {
+        uint256 nodeCount = nodes.length;
+        for (uint256 i=0; i<nodeCount; ) {
             NodeData memory node = nodeSet[nodes[i]];
             if (minD > node.stakeAmount) {
                 minD = node.stakeAmount;
                 minIndex = i;
             }
+            unchecked { ++i; }
         }
 
         return minIndex;
@@ -499,13 +508,15 @@ contract NodeContract is INodeContract, ReentrancyGuard {
         uint256 minAmount = type(uint256).max;
         address minCreator = address(0);
 
-        for (uint256 i = 0; i < creators.length; i++) {
+        uint256 len = creators.length;
+        for (uint256 i = 0; i < len; ) {
             address creator = creators[i];
-            uint256 creatorDelegation = IBaseToken(BASE_TOKEN_ADDR).delegation(creator, node);
+            uint256 creatorDelegation = IBaseToken(BASE_TOKEN_ADDRESS).delegation(creator, node);
             if (creatorDelegation < minAmount) {
                 minAmount = creatorDelegation;
                 minCreator = creator;
             }
+            unchecked { ++i; }
         }
 
         return (minCreator, minAmount);
