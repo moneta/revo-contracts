@@ -111,6 +111,11 @@ contract L2BaseToken is IBaseToken, SystemContractBase {
         } else {
             // Fan -> Creator
 
+            // Prevent self-loop
+            if (creatorPools[msg.sender] == _to) {
+                revert SelfStake(); 
+            }
+
             // Prevent Creator -> Creator
             if (creatorPools[msg.sender] != address(0) && creatorPools[_to] != address(0)) {
                 revert CreatorToCreatorSake(msg.sender, _to);
@@ -191,6 +196,11 @@ contract L2BaseToken is IBaseToken, SystemContractBase {
             // Update CreatorPool stake record
             ICreatorPool(_from).updateFanStake(msg.sender, _delegation[msg.sender][_from]);
             emit FanUnstaked(msg.sender, _from, _amount, _delegation[msg.sender][_from]);
+
+            if (_delegation[msg.sender][_from] == 0) {
+                delete _delegation[msg.sender][_from];
+                delete stakeCooldownUntil[msg.sender][_from]; // Clean up storage
+            }
         }
 
         emit DelegationChanged({

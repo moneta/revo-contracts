@@ -108,6 +108,7 @@ const params = {
   FORBID_ZERO_GAS_PER_PUBDATA: 1,
   SYSTEM_CONTEXT_EXPECTED_CODE_HASH: getSystemContextCodeHash(),
   PADDED_FORCE_DEPLOY_ON_ADDRESSES_SELECTOR: getPaddedSelector("ContractDeployer", "forceDeployOnAddresses"),
+  RIGHT_PADDED_SELECT_NODE_SELECTOR: getPaddedSelector("NodeContract", "selectNode"),
   // One of "worst case" scenarios for the number of state diffs in a batch is when 780kb of pubdata is spent
   // on repeated writes, that are all zeroed out. In this case, the number of diffs is 780kb / 5 = 156k. This means that they will have
   // accoomdate 42432000 bytes of calldata for the uncompressed state diffs. Adding 780kb on top leaves us with

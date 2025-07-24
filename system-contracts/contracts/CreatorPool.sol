@@ -75,8 +75,16 @@ contract CreatorPool is ReentrancyGuard {
         _claimReward(fan);
 
         totalStaked = totalStaked - fanStakes[fan] + newStake;
-        fanStakes[fan] = newStake;
-        rewardDebt[fan] = (newStake * accRewardPerShare) / PRECISION;
+
+        if (newStake == 0) {
+            // Fan has fully unstaked: clean up mappings
+            delete fanStakes[fan];
+            delete rewardDebt[fan];
+            delete pendingRewards[fan];
+        } else {
+            fanStakes[fan] = newStake;
+            rewardDebt[fan] = (newStake * accRewardPerShare) / PRECISION;
+        }
 
         emit FanStaked(fan, newStake);
     }
