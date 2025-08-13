@@ -40,6 +40,7 @@ async function preprocess(testMode: boolean) {
   );
 
   for (const contractPath of contracts) {
+    console.log("contractPath:", contractPath);
     const contract = fs.readFileSync(contractPath, "utf8");
     const preprocessed = await contract.replace(substring, replacingSubstring);
     const fileName = `${OUTPUT_DIR}/${contractPath.slice(CONTRACTS_DIR.length)}`;

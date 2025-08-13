@@ -118,7 +118,7 @@ address constant SLOAD_CONTRACT_ADDRESS = address(USER_CONTRACTS_OFFSET + 0x06);
 address constant WRAPPED_BASE_TOKEN_IMPL_ADDRESS = address(USER_CONTRACTS_OFFSET + 0x07);
 
 address constant BASE_TOKEN_ADDRESS = address(SYSTEM_CONTRACTS_OFFSET + 0x0a);
-address constant NODE_CONTRACT_ADDR = address(SYSTEM_CONTRACTS_OFFSET + 0xFF);
+address constant NODE_CONTRACT_ADDR = address(SYSTEM_CONTRACTS_OFFSET + 0xfe);
 
 /// @dev If the bitwise AND of the extraAbi[2] param when calling the MSG_VALUE_SIMULATOR
 /// is non-zero, the call will be assumed to be a system one.
