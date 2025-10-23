@@ -12,8 +12,8 @@ import {Diamond} from "contracts/state-transition/libraries/Diamond.sol";
 import {InitializeDataNewChain as DiamondInitializeDataNewChain} from "contracts/state-transition/chain-interfaces/IDiamondInit.sol";
 import {FeeParams, PubdataPricingMode} from "contracts/state-transition/chain-deps/ZKChainStorage.sol";
 import {Create2AndTransfer} from "./Create2AndTransfer.sol";
-
 import {Create2FactoryUtils} from "./Create2FactoryUtils.s.sol";
+import {L2ContractHelper} from "contracts/common/l2-helpers/L2ContractHelper.sol";
 
 // solhint-disable-next-line gas-struct-packing
 struct DeployedAddresses {
@@ -412,7 +412,7 @@ abstract contract DeployUtils is Create2FactoryUtils {
         } else if (compareStrings(contractName, "Bridgehub")) {
             return abi.encode(config.l1ChainId, config.ownerAddress, (config.contracts.maxNumberOfChains));
         } else if (compareStrings(contractName, "MessageRoot")) {
-            return abi.encode(addresses.bridgehub.bridgehubProxy);
+            return abi.encode(addresses.bridgehub.bridgehubProxy, config.l1ChainId);
         } else if (compareStrings(contractName, "CTMDeploymentTracker")) {
             return abi.encode(addresses.bridgehub.bridgehubProxy, addresses.bridges.l1AssetRouterProxy);
         } else if (compareStrings(contractName, "ChainAssetHandler")) {
@@ -517,6 +517,14 @@ abstract contract DeployUtils is Create2FactoryUtils {
         } else {
             revert(string.concat("Contract ", contractName, " creation calldata not set"));
         }
+    }
+
+    function calculateExpectedL2Address(string memory contractName) internal returns (address) {
+        return Utils.getL2AddressViaCreate2Factory(bytes32(0), getL2BytecodeHash(contractName), hex"");
+    }
+
+    function getL2BytecodeHash(string memory contractName) public view virtual returns (bytes32) {
+        return L2ContractHelper.hashL2Bytecode(getCreationCode(contractName, true));
     }
 
     function getInitializeCalldata(

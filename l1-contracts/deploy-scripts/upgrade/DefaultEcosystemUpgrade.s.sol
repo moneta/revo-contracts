@@ -79,11 +79,11 @@ import {Create2AndTransfer} from "../Create2AndTransfer.sol";
 import {ContractsConfig, DeployedAddresses, TokensConfig} from "../DeployUtils.s.sol";
 import {FixedForceDeploymentsData} from "contracts/state-transition/l2-deps/IL2GenesisUpgrade.sol";
 
-import {DeployL1Script} from "../DeployL1.s.sol";
+import {DeployCTMScript} from "../DeployCTM.s.sol";
 
 /// @notice Script used for default upgrade flow
 /// @dev For more complex upgrades, this script can be inherited and its functionality overridden if needed.
-contract DefaultEcosystemUpgrade is Script, DeployL1Script {
+contract DefaultEcosystemUpgrade is Script, DeployCTMScript {
     using stdToml for string;
 
     /**
@@ -121,7 +121,6 @@ contract DefaultEcosystemUpgrade is Script, DeployL1Script {
         address ecosystemAdminAddress;
         uint256 governanceUpgradeTimerInitialDelay;
         uint256 oldProtocolVersion;
-        uint256 v28ProtocolVersion;
         address oldValidatorTimelock;
         uint256 priorityTxsL2GasLimit;
         uint256 maxExpectedL1GasPrice;
@@ -530,7 +529,6 @@ contract DefaultEcosystemUpgrade is Script, DeployL1Script {
         newConfig.governanceUpgradeTimerInitialDelay = toml.readUint("$.governance_upgrade_timer_initial_delay");
 
         newConfig.oldProtocolVersion = toml.readUint("$.old_protocol_version");
-        newConfig.v28ProtocolVersion = toml.readUint("$.v28_protocol_version");
 
         newConfig.priorityTxsL2GasLimit = toml.readUint("$.priority_txs_l2_gas_limit");
         newConfig.maxExpectedL1GasPrice = toml.readUint("$.max_expected_l1_gas_price");
@@ -662,7 +660,7 @@ contract DefaultEcosystemUpgrade is Script, DeployL1Script {
 
         string[] memory additionalForceDeployments = getAdditionalDependenciesNames();
 
-        bytes[] memory additionalDependencies = new bytes[](6 + additionalForceDeployments.length); // Deps after Gateway upgrade
+        bytes[] memory additionalDependencies = new bytes[](7 + additionalForceDeployments.length); // Deps after Gateway upgrade
         additionalDependencies[0] = ContractsBytecodesLib.getCreationCode("L2SharedBridgeLegacy");
         additionalDependencies[1] = ContractsBytecodesLib.getCreationCode("BridgedStandardERC20");
         additionalDependencies[2] = ContractsBytecodesLib.getCreationCode("RollupL2DAValidator");
@@ -670,6 +668,7 @@ contract DefaultEcosystemUpgrade is Script, DeployL1Script {
         // TODO(refactor): do we need this?
         additionalDependencies[4] = ContractsBytecodesLib.getCreationCode("DiamondProxy");
         additionalDependencies[5] = ContractsBytecodesLib.getCreationCode("L2V29Upgrade");
+        additionalDependencies[6] = ContractsBytecodesLib.getCreationCode("ProxyAdmin");
 
         for (uint256 i; i < additionalForceDeployments.length; i++) {
             additionalDependencies[6 + i] = ContractsBytecodesLib.getCreationCode(additionalForceDeployments[i]);

@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
-import {StdStorage, Test, stdStorage} from "forge-std/Test.sol";
+import {StdStorage, Test, stdStorage, console} from "forge-std/Test.sol";
 
 import {DeployL1CoreContractsIntegrationScript} from "./deploy-scripts/DeployL1CoreContractsIntegration.s.sol";
-import {DeployL1IntegrationScript} from "./deploy-scripts/DeployL1Integration.s.sol";
+import {DeployCTMIntegrationScript} from "./deploy-scripts/DeployCTMIntegration.s.sol";
 import {RegisterCTM} from "deploy-scripts/RegisterCTM.s.sol";
 import {Bridgehub} from "contracts/bridgehub/Bridgehub.sol";
 import {L1AssetRouter} from "contracts/bridge/asset-router/L1AssetRouter.sol";
@@ -19,7 +19,7 @@ contract L1ContractDeployer is Test {
     using stdStorage for StdStorage;
 
     DeployL1CoreContractsIntegrationScript l1CoreContractsScript;
-    DeployL1IntegrationScript l1Script;
+    DeployCTMIntegrationScript ctmScript;
     RegisterCTM registerCTMScript;
     struct AllAddresses {
         DeployedAddresses ecosystemAddresses;
@@ -37,6 +37,17 @@ contract L1ContractDeployer is Test {
 
     AllAddresses public addresses;
 
+    function deployEcosystem() public returns (DeployedAddresses memory addresses) {
+        l1CoreContractsScript = new DeployL1CoreContractsIntegrationScript();
+        l1CoreContractsScript.runForTest();
+        addresses = l1CoreContractsScript.getAddresses();
+    }
+
+    function registerCTM(address bridgehub, address ctm) public {
+        registerCTMScript = new RegisterCTM();
+        registerCTMScript.runForTest(bridgehub, ctm);
+    }
+
     function _deployL1Contracts() internal {
         vm.setEnv("L1_CONFIG", "/test/foundry/l1/integration/deploy-scripts/script-config/config-deploy-l1.toml");
         vm.setEnv("L1_OUTPUT", "/test/foundry/l1/integration/deploy-scripts/script-out/output-deploy-l1.toml");
@@ -53,15 +64,16 @@ contract L1ContractDeployer is Test {
             "/test/foundry/l1/integration/deploy-scripts/script-config/gateway-preparation-l1.toml"
         );
 
-        l1CoreContractsScript = new DeployL1CoreContractsIntegrationScript();
-        l1CoreContractsScript.runForTest();
-        l1Script = new DeployL1IntegrationScript();
-        l1Script.runForTest();
-        registerCTMScript = new RegisterCTM();
-        registerCTMScript.runForTest();
+        DeployedAddresses memory coreContractsAddresses = deployEcosystem();
+        ctmScript = new DeployCTMIntegrationScript();
+        ctmScript.runForTest(coreContractsAddresses.bridgehub.bridgehubProxy);
+        addresses.ecosystemAddresses = ctmScript.getAddresses();
+        registerCTM(
+            addresses.ecosystemAddresses.bridgehub.bridgehubProxy,
+            addresses.ecosystemAddresses.stateTransition.chainTypeManagerProxy
+        );
 
-        addresses.ecosystemAddresses = l1Script.getAddresses();
-        ecosystemConfig = l1Script.getConfig();
+        ecosystemConfig = ctmScript.getConfig();
 
         addresses.bridgehub = Bridgehub(addresses.ecosystemAddresses.bridgehub.bridgehubProxy);
         addresses.chainTypeManager = IChainTypeManager(
