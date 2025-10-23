@@ -121,6 +121,7 @@ contract DefaultEcosystemUpgrade is Script, DeployL1Script {
         address ecosystemAdminAddress;
         uint256 governanceUpgradeTimerInitialDelay;
         uint256 oldProtocolVersion;
+        uint256 v28ProtocolVersion;
         address oldValidatorTimelock;
         uint256 priorityTxsL2GasLimit;
         uint256 maxExpectedL1GasPrice;
@@ -260,9 +261,11 @@ contract DefaultEcosystemUpgrade is Script, DeployL1Script {
         notifyAboutDeployment(contractAddress, contractName, creationCalldata, contractName, true);
     }
 
-    function deployGWTuppWithContract(string memory contractName) internal returns (address proxyAddress) {
+    function deployGWTuppWithContract(
+        string memory contractName
+    ) internal returns (address implementationAddress, address proxyAddress) {
         bytes memory creationCalldata = getCreationCalldata(contractName, true);
-        address implementation = Utils.deployThroughL1Deterministic(
+        address implementationAddress = Utils.deployThroughL1Deterministic(
             getCreationCode(contractName, true),
             creationCalldata,
             0,
@@ -272,10 +275,10 @@ contract DefaultEcosystemUpgrade is Script, DeployL1Script {
             addresses.bridgehub.bridgehubProxy,
             addresses.bridges.l1AssetRouterProxy
         );
-        notifyAboutDeployment(implementation, contractName, creationCalldata, contractName, true);
+        notifyAboutDeployment(implementationAddress, contractName, creationCalldata, contractName, true);
 
         bytes memory proxyCreationCalldata = abi.encode(
-            implementation,
+            implementationAddress,
             gatewayConfig.gatewayStateTransition.chainTypeManagerProxyAdmin,
             getInitializeCalldata(contractName, true)
         );
@@ -527,6 +530,7 @@ contract DefaultEcosystemUpgrade is Script, DeployL1Script {
         newConfig.governanceUpgradeTimerInitialDelay = toml.readUint("$.governance_upgrade_timer_initial_delay");
 
         newConfig.oldProtocolVersion = toml.readUint("$.old_protocol_version");
+        newConfig.v28ProtocolVersion = toml.readUint("$.v28_protocol_version");
 
         newConfig.priorityTxsL2GasLimit = toml.readUint("$.priority_txs_l2_gas_limit");
         newConfig.maxExpectedL1GasPrice = toml.readUint("$.max_expected_l1_gas_price");
@@ -604,6 +608,9 @@ contract DefaultEcosystemUpgrade is Script, DeployL1Script {
         addresses.bridges.l1NullifierProxy = address(
             L1AssetRouter(addresses.bridges.l1AssetRouterProxy).L1_NULLIFIER()
         );
+        addresses.bridges.erc20BridgeProxy = address(
+            L1AssetRouter(addresses.bridges.l1AssetRouterProxy).legacyBridge()
+        );
 
         addresses.bridgehub.ctmDeploymentTrackerProxy = address(
             Bridgehub(addresses.bridgehub.bridgehubProxy).l1CtmDeployer()
@@ -655,16 +662,17 @@ contract DefaultEcosystemUpgrade is Script, DeployL1Script {
 
         string[] memory additionalForceDeployments = getAdditionalDependenciesNames();
 
-        bytes[] memory additionalDependencies = new bytes[](5 + additionalForceDeployments.length); // Deps after Gateway upgrade
+        bytes[] memory additionalDependencies = new bytes[](6 + additionalForceDeployments.length); // Deps after Gateway upgrade
         additionalDependencies[0] = ContractsBytecodesLib.getCreationCode("L2SharedBridgeLegacy");
         additionalDependencies[1] = ContractsBytecodesLib.getCreationCode("BridgedStandardERC20");
         additionalDependencies[2] = ContractsBytecodesLib.getCreationCode("RollupL2DAValidator");
         additionalDependencies[3] = ContractsBytecodesLib.getCreationCode("ValidiumL2DAValidator");
         // TODO(refactor): do we need this?
         additionalDependencies[4] = ContractsBytecodesLib.getCreationCode("DiamondProxy");
+        additionalDependencies[5] = ContractsBytecodesLib.getCreationCode("L2V29Upgrade");
 
         for (uint256 i; i < additionalForceDeployments.length; i++) {
-            additionalDependencies[5 + i] = ContractsBytecodesLib.getCreationCode(additionalForceDeployments[i]);
+            additionalDependencies[6 + i] = ContractsBytecodesLib.getCreationCode(additionalForceDeployments[i]);
         }
 
         factoryDeps = SystemContractsProcessing.mergeBytesArrays(basicDependencies, additionalDependencies);
@@ -691,6 +699,8 @@ contract DefaultEcosystemUpgrade is Script, DeployL1Script {
             dangerousTestOnlyForcedBeacon: address(0)
         });
     }
+
+    function saveOutputVersionSpecific() internal virtual {}
 
     function saveOutput(string memory outputPath) internal virtual override {
         vm.serializeAddress("bridgehub", "bridgehub_proxy_addr", addresses.bridgehub.bridgehubProxy);
@@ -812,6 +822,11 @@ contract DefaultEcosystemUpgrade is Script, DeployL1Script {
         );
         vm.serializeAddress(
             "gateway_state_transition",
+            "validator_timelock_implementation_addr",
+            gatewayConfig.gatewayStateTransition.validatorTimelockImplementation
+        );
+        vm.serializeAddress(
+            "gateway_state_transition",
             "validator_timelock_addr",
             gatewayConfig.gatewayStateTransition.validatorTimelock
         );
@@ -831,6 +846,7 @@ contract DefaultEcosystemUpgrade is Script, DeployL1Script {
         vm.serializeUint("root", "max_expected_l1_gas_price", newConfig.maxExpectedL1GasPrice);
 
         vm.serializeAddress("bridges", "erc20_bridge_implementation_addr", addresses.bridges.erc20BridgeImplementation);
+        vm.serializeAddress("bridges", "erc20_bridge_proxy_addr", addresses.bridges.erc20BridgeProxy);
         vm.serializeAddress("bridges", "l1_nullifier_proxy_addr", addresses.bridges.l1NullifierProxy);
         vm.serializeAddress("bridges", "l1_nullifier_implementation_addr", addresses.bridges.l1NullifierImplementation);
         vm.serializeAddress(
@@ -936,6 +952,11 @@ contract DefaultEcosystemUpgrade is Script, DeployL1Script {
 
         vm.serializeAddress(
             "deployed_addresses",
+            "validator_timelock_implementation_addr",
+            addresses.stateTransition.validatorTimelockImplementation
+        );
+        vm.serializeAddress(
+            "deployed_addresses",
             "validator_timelock_addr",
             addresses.stateTransition.validatorTimelock
         );
@@ -994,10 +1015,12 @@ contract DefaultEcosystemUpgrade is Script, DeployL1Script {
         vm.serializeString("root", "deployed_addresses", deployedAddresses);
         vm.serializeString("root", "contracts_config", contractsConfig);
         vm.serializeAddress("root", "owner_address", config.ownerAddress);
+        vm.serializeAddress("root", "transparent_proxy_admin", addresses.transparentProxyAdmin);
         vm.serializeString("root", "gateway", gateway);
 
         vm.serializeBytes("root", "governance_calls", new bytes(0)); // Will be populated later
         vm.serializeBytes("root", "ecosystem_admin_calls", new bytes(0)); // Will be populated later
+        vm.serializeBytes("root", "v29", new bytes(0)); // Will be populated later
 
         vm.serializeUint(
             "root",
@@ -1008,6 +1031,8 @@ contract DefaultEcosystemUpgrade is Script, DeployL1Script {
         string memory toml = vm.serializeBytes("root", "chain_upgrade_diamond_cut", newlyGeneratedData.upgradeCutData);
 
         vm.writeToml(toml, outputPath);
+
+        saveOutputVersionSpecific();
     }
 
     /////////////////////////// Blockchain interactions ////////////////////////////
