@@ -660,11 +660,12 @@ object "Bootloader" {
                 ret := 0x000000000000000000000000000000000000ffff
             }
 
-            function NODE_CONTRACT_ADDR() -> ret {
-                ret := 0x00000000000000000000000000000000000080fe
-                
             function L2_INTEROP_ROOT_STORAGE() -> ret {
                 ret := 0x0000000000000000000000000000000000010008
+            }
+
+            function NODE_CONTRACT_ADDR() -> ret {
+                ret := 0x00000000000000000000000000000000000080fe
             }
 
             /// @dev The minimal allowed distance in bytes between the pointer to the compressed data
