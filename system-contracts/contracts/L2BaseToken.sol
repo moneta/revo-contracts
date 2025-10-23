@@ -7,7 +7,7 @@ import {IBaseToken} from "./interfaces/IBaseToken.sol";
 import {INodeContract} from "./interfaces/INodeContract.sol";
 import {ICreatorPool} from "./interfaces/ICreatorPool.sol";
 import {SystemContractBase} from "./abstract/SystemContractBase.sol";
-import {MSG_VALUE_SYSTEM_CONTRACT, DEPLOYER_SYSTEM_CONTRACT, BOOTLOADER_FORMAL_ADDRESS, L1_MESSENGER_CONTRACT} from "./Constants.sol";
+import {BOOTLOADER_FORMAL_ADDRESS, DEPLOYER_SYSTEM_CONTRACT, L1_MESSENGER_CONTRACT, MSG_VALUE_SYSTEM_CONTRACT} from "./Constants.sol";
 import {IMailbox} from "./interfaces/IMailbox.sol";
 import {Unauthorized, InsufficientFunds, SelfStake, SelfUnstake, NodeStakeNotAllowed, CreatorToCreatorSake, MultiNodeStakeError, ZeroAmountError, InsufficientStake, InsufficientDelegation, CreatorLimitReached, UnstakingCooldown} from "./SystemContractErrors.sol";
 

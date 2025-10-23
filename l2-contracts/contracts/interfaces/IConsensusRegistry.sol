@@ -76,6 +76,7 @@ interface IConsensusRegistry {
     /// @param a First component of the BLS12-381 public key.
     /// @param b Second component of the BLS12-381 public key.
     /// @param c Third component of the BLS12-381 public key.
+    // solhint-disable-next-line
     struct BLS12_381PublicKey {
         bytes32 a;
         bytes32 b;
@@ -85,6 +86,7 @@ interface IConsensusRegistry {
     /// @dev Represents BLS12_381 signature.
     /// @param a First component of the BLS12-381 signature.
     /// @param b Second component of the BLS12-381 signature.
+    // solhint-disable-next-line
     struct BLS12_381Signature {
         bytes32 a;
         bytes16 b;
