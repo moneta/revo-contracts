@@ -113,10 +113,12 @@ contract NodeContract is INodeContract, ReentrancyGuard {
         uint256 len = creators.length;
         for (uint256 i = 0; i < len; ) {
             address creator = creators[i];
-            uint256 creatorDelegation = IBaseToken(BASE_TOKEN_ADDRESS).delegation(creator, node);
-            if (creatorDelegation == 0) { unchecked { ++i; } continue; }
+            uint256 creatorOwn = IBaseToken(BASE_TOKEN_ADDRESS).delegation(creator, node);
+            uint256 fansStake = IBaseToken(BASE_TOKEN_ADDRESS).delegatedTo(creator);
+            uint256 effective = creatorOwn + fansStake;
+            if (effective == 0) continue;
 
-            uint256 share = (creatorPool * creatorDelegation) / totalDelegation;
+            uint256 share = (creatorPool * effective) / totalDelegation;
             distributed += share;
 
             (bool success, ) = creator.call{value: share}("");
@@ -504,9 +506,11 @@ contract NodeContract is INodeContract, ReentrancyGuard {
         uint256 len = creators.length;
         for (uint256 i = 0; i < len; ) {
             address creator = creators[i];
-            uint256 creatorDelegation = IBaseToken(BASE_TOKEN_ADDRESS).delegation(creator, node);
-            if (creatorDelegation < minAmount) {
-                minAmount = creatorDelegation;
+            uint256 creatorOwn = IBaseToken(BASE_TOKEN_ADDRESS).delegation(creator, node);
+            uint256 fansStake = IBaseToken(BASE_TOKEN_ADDRESS).delegatedTo(creator);
+            uint256 effective = creatorOwn + fansStake;
+            if (effective < minAmount) {
+                minAmount = effective;
                 minCreator = creator;
             }
             unchecked { ++i; }

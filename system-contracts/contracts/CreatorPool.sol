@@ -2,7 +2,7 @@
 pragma solidity ^0.8.28;
 
 import {ReentrancyGuard} from "../lib/openzeppelin-contracts-v4/contracts/security/ReentrancyGuard.sol";
-import {InvalidInput, InvalidCreator, Unauthorized, TooBigCut, ZeroAmountError, TransferEthFailed} from "./SystemContractErrors.sol";
+import {InvalidInput, InvalidCreator, Unauthorized, TooBigCut, ZeroAmountError, NotEnoughGas, TransferEthFailed} from "./SystemContractErrors.sol";
 import {IBaseToken} from "./interfaces/IBaseToken.sol";
 import {BASE_TOKEN_ADDRESS, NODE_CONTRACT_ADDR} from "./Constants.sol";
 
@@ -30,31 +30,24 @@ contract CreatorPool is ReentrancyGuard {
     event RewardClaimed(address indexed fan, uint256 amount);
 
     modifier onlyFactory() {
-        if(msg.sender != FACTORY) revert Unauthorized(msg.sender);
+        if (msg.sender != FACTORY) revert Unauthorized(msg.sender);
         _;
     }
 
     modifier onlyBaseToken() {
-        if(msg.sender != BASE_TOKEN_ADDRESS) revert Unauthorized(msg.sender);
+        if (msg.sender != BASE_TOKEN_ADDRESS) revert Unauthorized(msg.sender);
         _;
     }
 
     modifier onlyCreator() {
-        if(msg.sender != CREATOR) revert Unauthorized(msg.sender);
+        if (msg.sender != CREATOR) revert Unauthorized(msg.sender);
         _;
     }
 
-    // modifier onlyNodeContract() {
-    //     if (msg.sender != NODE_CONTRACT_ADDR) revert Unauthorized(msg.sender);
-    //     _;
-    // }
-
-    constructor(address _node, address _factory, address _creator, uint256 _creatorCut, string memory _poolName ) payable {
-        if(_node == address(0)) revert InvalidInput();
-
-        if(_creator == address(0)) revert InvalidCreator(_creator);
-
-        if(_creatorCut > MAX_CREATOR_CUT) revert TooBigCut();
+    constructor(address _node, address _factory, address _creator, uint256 _creatorCut, string memory _poolName) payable {
+        if (_node == address(0)) revert InvalidInput();
+        if (_creator == address(0)) revert InvalidCreator(_creator);
+        if (_creatorCut > MAX_CREATOR_CUT) revert TooBigCut();
 
         NODE = _node;
         FACTORY = _factory;
@@ -64,15 +57,16 @@ contract CreatorPool is ReentrancyGuard {
     }
 
     function isValidCreatorCut(uint256 cut) public pure returns (bool) {
-      return cut <= MAX_CREATOR_CUT;
+        return cut <= MAX_CREATOR_CUT;
     }
 
     /// @notice Register this pool by staking REVO to the selected node
     function registerAsCreatorPool() external payable nonReentrant {
         uint256 amount = address(this).balance;
         if (amount <= 0) revert ZeroAmountError();
+        if (amount <= 1000000000000000) revert NotEnoughGas();
 
-        IBaseToken(BASE_TOKEN_ADDRESS).stake{value: 1   }(NODE);
+        IBaseToken(BASE_TOKEN_ADDRESS).stake{value: amount - 1000000000000000 }(NODE);
         emit StakeRegisteredToNode(NODE, amount);
     }
 
@@ -106,17 +100,22 @@ contract CreatorPool is ReentrancyGuard {
         if (owed > 0) {
             pendingRewards[fan] = 0;
             rewardDebt[fan] = (fanStakes[fan] * accRewardPerShare) / PRECISION;
+            if (address(this).balance < owed) revert TransferEthFailed();
             (bool sent, ) = payable(fan).call{value: owed}("");
-
-            if(!sent) revert TransferEthFailed();
-
+            if (!sent) revert TransferEthFailed();
             emit RewardClaimed(fan, owed);
         }
     }
 
-    /// @notice Receive REVO reward from NodeContract
+    /// @notice Unstake from the node
+    // function unstakeFromNode(uint256 amount) external onlyCreator {
+    //     if (amount == 0) revert ZeroAmountError();
+    //     IBaseToken(BASE_TOKEN_ADDRESS).unstake(NODE, amount);
+    // }
+
+    /// @notice Receive REVO reward from NodeContract or additional stakes
     receive() external payable {
-        if (msg.sender == NODE_CONTRACT_ADDR ) {
+        if (msg.sender == NODE_CONTRACT_ADDR) {
             emit RewardReceived(msg.value);
 
             uint256 creatorShare = (msg.value * creatorCut) / MAX_CREATOR_CUT;
@@ -128,7 +127,7 @@ contract CreatorPool is ReentrancyGuard {
 
             if (creatorShare > 0) {
                 (bool success, ) = CREATOR.call{value: creatorShare}("");
-                if(!success) revert TransferEthFailed();
+                if (!success) revert TransferEthFailed();
             }
         } else if (msg.sender != FACTORY) {
             revert Unauthorized(msg.sender);

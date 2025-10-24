@@ -84,15 +84,35 @@ contract L2BaseToken is IBaseToken, SystemContractBase {
             // Check for new creator registering
             if (creatorPools[msg.sender] == address(0)) {       // msg.sender is not creator
                 address lowestDelegator;
-                uint256 minDelegation;
+                uint256 minEffective;
 
-                (lowestDelegator, minDelegation) = INodeContract(NODE_CONTRACT_ADDR).getLowestDelegator(_to);
+                (lowestDelegator, minEffective) = INodeContract(NODE_CONTRACT_ADDR).getLowestDelegator(_to);
 
                 if (INodeContract(NODE_CONTRACT_ADDR).getNodeDelegatorCount(_to) >= MAX_CREATORS_PER_NODE) {
-                    uint256 newDelegation = delegated[msg.sender] + _amount;
+                    uint256 newEffective = delegated[msg.sender] + _amount;
 
-                    if (newDelegation > minDelegation) {
-                        INodeContract(NODE_CONTRACT_ADDR).decreaseDelegation(_to, lowestDelegator, minDelegation);
+                    if (newEffective > minEffective) {
+                        // Evict the lowest: simulate full unstake of own stake and remove contribution of fans
+                        uint256 ownLow = _delegation[lowestDelegator][_to];
+                        uint256 fansLow = delegated[lowestDelegator];
+                        // assert(minEffective == ownLow + fansLow);
+
+                        // First, refund own stake to lowestDelegator
+                        _delegation[lowestDelegator][_to] -= ownLow;
+                        stakes[lowestDelegator] -= ownLow;
+                        balance[lowestDelegator] += ownLow;
+
+                        emit DelegationChanged({
+                            delegator: lowestDelegator,
+                            delegatee: _to,
+                            oldAmount: ownLow,
+                            newAmount: 0,
+                            increased: false
+                        });
+                        emit Unstake(lowestDelegator, _to, ownLow);
+
+                        // Then, decrease node totals by total effective (own + fans)
+                        INodeContract(NODE_CONTRACT_ADDR).decreaseDelegation(_to, lowestDelegator, ownLow + fansLow);
                         delete creatorPools[lowestDelegator];
                         emit RevokeCreatorPool(lowestDelegator, _to);
                     } else {
