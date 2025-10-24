@@ -11,7 +11,7 @@ import {BOOTLOADER_FORMAL_ADDRESS, BASE_TOKEN_ADDRESS} from "./Constants.sol";
 contract NodeContract is INodeContract, ReentrancyGuard {
     uint256 public constant MAX_NODE_NUMBER = 250;
     uint256 public constant MAX_CREATORS_PER_NODE = 200;
-    uint256 public constant HALVING_BLOCKS = 5;
+    uint256 internal constant BATCHES_PER_EPOCH = 194_400;
     uint256 public constant GUARANTOR_COOLDOWN = 1 hours;   // or e.g., 3600 for 1hr
     
     uint256 public constant MAX_NODE_CUT_BPS = 5000;        // 50%
@@ -38,7 +38,7 @@ contract NodeContract is INodeContract, ReentrancyGuard {
     mapping(address => uint256) public pendingGuarantorRefunds;
 
     constructor() {
-        batchReward = 50 * 10 ** 18;
+        batchReward = 80 * 10 ** 18;
         batchCount = 0;
     }
 
@@ -114,7 +114,7 @@ contract NodeContract is INodeContract, ReentrancyGuard {
         for (uint256 i = 0; i < len; ) {
             address creator = creators[i];
             uint256 creatorDelegation = IBaseToken(BASE_TOKEN_ADDRESS).delegation(creator, node);
-            if (creatorDelegation == 0) continue;
+            if (creatorDelegation == 0) { unchecked { ++i; } continue; }
 
             uint256 share = (creatorPool * creatorDelegation) / totalDelegation;
             distributed += share;
@@ -171,17 +171,10 @@ contract NodeContract is INodeContract, ReentrancyGuard {
         }
         if (!selectedOnce) selectedOnce = true;
         
-        if (batchReward > 0) {
-            if (address(this).balance >= batchReward) {
-                distributeToCreators(winner, batchReward);
-            }
-
-            if (batchCount == HALVING_BLOCKS - 1) {
-                batchCount = 0;
-                batchReward = batchReward / 2;
-            } else {
-                ++batchCount;
-            }
+        batchReward = rewardPerBlock(batchCount);
+        if (batchReward > 0 && address(this).balance >= batchReward) {
+            distributeToCreators(winner, batchReward);
+            ++batchCount;
         }
 
         emit NodeSelected(winner);
@@ -520,5 +513,55 @@ contract NodeContract is INodeContract, ReentrancyGuard {
         }
 
         return (minCreator, minAmount);
+    }
+
+    function rewardPerBlock(uint256 batchNum) public pure returns (uint256) {
+        uint256 e = batchNum / BATCHES_PER_EPOCH;
+        if (e >= 40) return 0;
+
+        uint256[40] memory REWARD_PER_BATCH_WEI = [
+            uint256(80000000000000000000),
+            uint256(75519649942760000000),
+            uint256(71290219093462600000),
+            uint256(67297654878512000000),
+            uint256(63528691729923800000),
+            uint256(59970807009567000000),
+            uint256(56612179401841400000),
+            uint256(53441649636547400000),
+            uint256(50448683411446100000),
+            uint256(47623336391319200000),
+            uint256(44956221167234100000),
+            uint256(42438476066235200000),
+            uint256(40061735707828500000),
+            uint256(37818103209432200000),
+            uint256(35700123948443600000),
+            uint256(33700760793745100000),
+            uint256(31813370724354000000),
+            uint256(30031682757530800000),
+            uint256(28349777113009300000),
+            uint256(26762065544121600000),
+            uint256(25263272770465800000),
+            uint256(23848418950425500000),
+            uint256(22512803135305200000),
+            uint256(21251987650106500000),
+            uint256(20061783349048800000),
+            uint256(18938235696845700000),
+            uint256(17877611629490800000),
+            uint256(16876387150897000000),
+            uint256(15931235624178000000),
+            uint256(15039016718669300000),
+            uint256(14196765975965300000),
+            uint256(13401684960302300000),
+            uint256(12651131960564800000),
+            uint256(11942613213018900000),
+            uint256(11273774615612100000),
+            uint256(10642393906307500000),
+            uint256(10046373279466300000),
+            uint256(9483732415744940000),
+            uint256(8952601902348290000),
+            uint256(8451217021777880000)
+        ];
+        
+        return REWARD_PER_BATCH_WEI[e];
     }
 }

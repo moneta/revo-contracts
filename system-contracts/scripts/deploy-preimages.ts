@@ -3,7 +3,7 @@ import * as hre from "hardhat";
 
 import { Deployer } from "@matterlabs/hardhat-zksync-deploy";
 import { Command } from "commander";
-import type { BigNumber, BytesLike } from "ethers";
+import type { BigNumber, BytesLike} from "ethers";
 import { ethers } from "ethers";
 import { formatUnits, parseUnits } from "ethers/lib/utils";
 import * as fs from "fs";
@@ -11,7 +11,7 @@ import * as path from "path";
 import type { types } from "zksync-ethers";
 import { Provider, Wallet } from "zksync-ethers";
 import { hashBytecode } from "zksync-ethers/build/utils";
-import { Language, SYSTEM_CONTRACTS } from "./constants";
+import { Language, SourceLocation, SYSTEM_CONTRACTS, ISystemContracts } from "./constants";
 import type { Dependency, DeployedDependency } from "./utils";
 import {
   checkMarkers,
@@ -264,46 +264,50 @@ class ZkSyncDeployer {
   }
 
   // Returns the contracts to be published.
-  async prepareContractsForPublishing(): Promise<Dependency[]> {
+  async prepareContractsForPublishing(contracts: ISystemContracts): Promise<Dependency[]> {
     const dependenciesToPublish: Dependency[] = [];
-    for (const contract of Object.values(SYSTEM_CONTRACTS)) {
+    for (const contract of Object.values(contracts)) {
       const contractName = contract.codeName;
       let factoryDeps: string[] = [];
-      if (contract.lang == Language.Solidity) {
-        const artifact = await this.deployer.loadArtifact(contractName);
-        factoryDeps = [...(await this.deployer.extractFactoryDeps(artifact)), artifact.bytecode];
-      } else {
-        // Yul files have only one dependency
-        factoryDeps = [readYulBytecode(contract)];
-      }
+      try {
+        if (contract.lang == Language.Solidity) {
+          const artifact = await this.deployer.loadArtifact(contractName);
+          factoryDeps = [...(await this.deployer.extractFactoryDeps(artifact)), artifact.bytecode];
+        } else {
+          // Yul files have only one dependency
+          factoryDeps = [readYulBytecode(contract)];
+        }
 
-      const contractBytecodeHash = ethers.utils.hexlify(hashBytecode(factoryDeps[factoryDeps.length - 1]));
-      if (await this.shouldUpgradeSystemContract(contract.address, contractBytecodeHash)) {
-        this.dependenciesToUpgrade.push({
+        const contractBytecodeHash = ethers.utils.hexlify(hashBytecode(factoryDeps[factoryDeps.length - 1]));
+        if (await this.shouldUpgradeSystemContract(contract.address, contractBytecodeHash)) {
+          this.dependenciesToUpgrade.push({
+            name: contractName,
+            bytecodeHashes: [contractBytecodeHash],
+            address: contract.address,
+          });
+        }
+        
+        const [bytecodesToPublish, currentLength] = await filterPublishedFactoryDeps(
+          contractName,
+          factoryDeps,
+          this.deployer
+        );
+        if (bytecodesToPublish.length == 0) {
+          console.log(`All bytecodes for ${contractName} are already published, skipping`);
+          continue;
+        }
+        if (currentLength > MAX_COMBINED_LENGTH) {
+          throw new Error(`Can not publish dependencies of contract ${contractName}`);
+        }
+
+        dependenciesToPublish.push({
           name: contractName,
-          bytecodeHashes: [contractBytecodeHash],
+          bytecodes: bytecodesToPublish,
           address: contract.address,
         });
+      } catch (e) {
+        console.log(e);
       }
-
-      const [bytecodesToPublish, currentLength] = await filterPublishedFactoryDeps(
-        contractName,
-        factoryDeps,
-        this.deployer
-      );
-      if (bytecodesToPublish.length == 0) {
-        console.log(`All bytecodes for ${contractName} are already published, skipping`);
-        continue;
-      }
-      if (currentLength > MAX_COMBINED_LENGTH) {
-        throw new Error(`Can not publish dependencies of contract ${contractName}`);
-      }
-
-      dependenciesToPublish.push({
-        name: contractName,
-        bytecodes: bytecodesToPublish,
-        address: contract.address,
-      });
     }
 
     return dependenciesToPublish;
@@ -360,35 +364,71 @@ async function main() {
     .option("--bootloader")
     .option("--default-aa")
     .option("--evm-emulator")
+    .option("--base-token-contract")
+    .option("--node-contract")
     .option("--system-contracts")
     .option("--file <file>")
     .action(async (cmd) => {
+      
       const l1Rpc = cmd.l1Rpc ? cmd.l1Rpc : l1RpcUrl();
       const l2Rpc = cmd.l2Rpc ? cmd.l2Rpc : l2RpcUrl();
-      const providerL1 = new ethers.providers.JsonRpcProvider(l1Rpc);
-      const providerL2 = new Provider(l2Rpc);
-      const wallet = cmd.privateKey
-        ? new Wallet(cmd.privateKey)
-        : Wallet.fromMnemonic(process.env.MNEMONIC ? process.env.MNEMONIC : ethTestConfig.mnemonic, "m/44'/60'/0'/0/1");
-      wallet.connect(providerL2);
-      wallet.connectToL1(providerL1);
 
+      const providerL1 = new ethers.providers.JsonRpcProvider(l1Rpc, { chainId: 11155111, name: 'sepolia' });
+      const providerL2 = new Provider(l2Rpc, { chainId: 73863, name: 'libertas' });
+     
+      // ********
+      const l1 = providerL1;
+      const l2 = providerL2;
+
+      // // 1) Make a STATIC provider with explicit network and a timeout
+      // const l1 = new ethers.providers.StaticJsonRpcProvider(
+      //   { url: l1Rpc, timeout: 20000 },
+      //   { name: "sepolia", chainId: 11155111 }
+      // );
+      // // Ensure readiness before reusing anywhere
+      // await l1.ready;
+
+      // // 2) L2 provider
+      // const l2 = new Provider(l2Rpc, { chainId: 73863, name: 'libertas' });
+
+      // 3) Separate wallets (don’t rely on Deployer’s internal ones for L1 ops)
+      const ethWallet = new ethers.Wallet(cmd.privateKey, l1);
+      const zkWallet  = new Wallet(cmd.privateKey, l2).connectToL1(l1);
+
+      // 4) Create deployer with zk wallet only
+      const deployer = new Deployer(hre, zkWallet as any);
+
+      deployer.zkWallet = zkWallet;
+      // 5) Use YOUR ethWallet for L1 calls (gasPrice, nonce, etc.)
+      const gasPrice = await ethWallet.getGasPrice();
+      const nonce    = await ethWallet.getTransactionCount();
+
+      console.log("L1 network:", await l1.getNetwork()); // should print sepolia/11155111
+      console.log("nonce:", nonce.toString());
+      // ********
+      
+      // const wallet = cmd.privateKey
+      //   ? new Wallet(cmd.privateKey)
+      //   : Wallet.fromMnemonic(process.env.MNEMONIC ? process.env.MNEMONIC : ethTestConfig.mnemonic, "m/44'/60'/0'/0/1");
+
+      // const nonce = cmd.nonce ? parseInt(cmd.nonce) : await ethWallet.getTransactionCount();
+      console.log(`Using nonce: ${nonce}`);
+
+      // wallet.connect(providerL2);
+      // wallet.connectToL1(providerL1);
+      
+      // const gasPrice = cmd.gasPrice ? parseUnits(cmd.gasPrice, "gwei") : await providerL1.getGasPrice();
+      console.log("gasPrice...:", gasPrice);
       // TODO(EVM-392): refactor to avoid `any` here.
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const deployer = new Deployer(hre, wallet as any);
+      // const deployer = new Deployer(hre, wallet as any);
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       deployer.zkWallet = deployer.zkWallet.connect(providerL2 as any).connectToL1(providerL1);
       deployer.ethWallet = deployer.ethWallet.connect(providerL1);
-      const ethWallet = deployer.ethWallet;
+      // const ethWallet = deployer.ethWallet;
 
       console.log(`Using deployer wallet: ${ethWallet.address}`);
-
-      const gasPrice = cmd.gasPrice ? parseUnits(cmd.gasPrice, "gwei") : await providerL1.getGasPrice();
-      console.log(`Using gas price: ${formatUnits(gasPrice, "gwei")} gwei`);
-
-      const nonce = cmd.nonce ? parseInt(cmd.nonce) : await ethWallet.getTransactionCount();
-      console.log(`Using nonce: ${nonce}`);
-
+      
       const zkSyncDeployer = new ZkSyncDeployer(deployer, gasPrice, nonce);
       if (cmd.bootloader) {
         await zkSyncDeployer.processBootloader();
@@ -403,8 +443,40 @@ async function main() {
       }
 
       if (cmd.systemContracts) {
-        const dependenciesToPublish = await zkSyncDeployer.prepareContractsForPublishing();
+        console.log("\nSystem contracts...\n");
+        const dependenciesToPublish = await zkSyncDeployer.prepareContractsForPublishing(SYSTEM_CONTRACTS);
+        console.log('dependenciesToPublish: ', dependenciesToPublish);
         await zkSyncDeployer.publishDependencies(dependenciesToPublish);
+      }
+
+      if (cmd.baseTokenContract) {
+        const BASE_TOKEN_CONTRACT: ISystemContracts = {
+          L2BaseToken: {
+            address: "0x000000000000000000000000000000000000800a",
+            codeName: "L2BaseToken",
+            lang: Language.Solidity,
+            location: SourceLocation.SystemContracts,
+          }
+        }
+        const dependenciesToPublish = await zkSyncDeployer.prepareContractsForPublishing(BASE_TOKEN_CONTRACT);
+        await zkSyncDeployer.publishDependencies(dependenciesToPublish);
+      }
+
+      if (cmd.nodeContract) {
+        const NODE_SYSTEM_CONTRACT: ISystemContracts = {
+          NodeContract: {
+            address: "0x00000000000000000000000000000000000080Fe",
+            codeName: "NodeContract",
+            lang: Language.Solidity,
+            location: SourceLocation.SystemContracts,
+          }
+        }
+        const dependenciesToPublish = await zkSyncDeployer.prepareContractsForPublishing(NODE_SYSTEM_CONTRACT);
+        await zkSyncDeployer.publishDependencies(dependenciesToPublish);
+        // for (const dependency of dependenciesToPublish) {
+        //   const bytecodes = dependency.bytecodes;
+        //   await this.publishToL1Supplier(BYTECODES_SUPPLIER_ADDR, providerL1, ethWallet, bytecodes);
+        // }
       }
 
       console.log("\nSending all L1->L2 transactions done. Now waiting for the reports on those...\n");

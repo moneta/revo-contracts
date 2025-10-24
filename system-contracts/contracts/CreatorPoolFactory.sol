@@ -3,7 +3,7 @@ pragma solidity ^0.8.28;
 
 import {CreatorPool} from "./CreatorPool.sol";
 import {INodeContract} from "./interfaces/INodeContract.sol";
-import {PoolAlreadyCreated, TooBigCut, InvalidNode, TransferEthFailed, PoolRegistrationError} from "./SystemContractErrors.sol";
+import {PoolAlreadyCreated, TooBigCut, InvalidNode, ZeroAmountError, TransferEthFailed, PoolRegistrationError} from "./SystemContractErrors.sol";
 import {NODE_CONTRACT_ADDR} from "./Constants.sol";
 
 contract CreatorPoolFactory {
@@ -21,8 +21,10 @@ contract CreatorPoolFactory {
 
         if(!INodeContract(NODE_CONTRACT_ADDR).isNode(node)) revert InvalidNode(node);
 
+        if (msg.value <= 0) revert ZeroAmountError();
+
         // Deploy pool contract
-        CreatorPool pool = new CreatorPool({
+        CreatorPool pool = new CreatorPool{value: msg.value}({
             _node: node, 
             _factory: address(this), 
             _creator: msg.sender, 
@@ -36,26 +38,45 @@ contract CreatorPoolFactory {
         creatorToPool[msg.sender] = poolAddr;
         allPools.push(poolAddr);
 
+        // Transfer fund to the pool
+        // uint256 stakeAmount = msg.value;
+        // (bool sent, ) = payable(poolAddr).call{value: stakeAmount}("");
+        // if (!sent) {
+        //     // Rollback mappings and emit revert
+        //     delete creatorToPool[msg.sender];
+        //     allPools.pop();
+        //     revert TransferEthFailed();
+        // }
+
         // Stake to node and register the pool
-        try pool.registerAsCreatorPool{value: msg.value}() {
-            emit CreatorPoolCreated({
-                creator: msg.sender,
-                pool: poolAddr,
-                node: node,
-                creatorCut: creatorCut,
-                poolName: poolName
-            });
-        } catch {
-            // Rollback pool mapping and list
-            delete creatorToPool[msg.sender];
-            allPools.pop();
+        // try pool.registerAsCreatorPool() {
+        //     emit CreatorPoolCreated({
+        //         creator: msg.sender,
+        //         pool: poolAddr,
+        //         node: node,
+        //         creatorCut: creatorCut,
+        //         poolName: poolName
+        //     });
+        // } catch {
+        //     // Rollback pool mapping and list
+        //     delete creatorToPool[msg.sender];
+        //     allPools.pop();
 
-            // Attempt to refund ETH
-            (bool refundSuccess, ) = msg.sender.call{value: msg.value}("");
-            if(!refundSuccess) revert TransferEthFailed();
+        //     // Attempt to refund ETH
+        //     // (bool refundSuccess, ) = msg.sender.call{value: msg.value}("");
+        //     // if(!refundSuccess) revert TransferEthFailed();
 
-            revert PoolRegistrationError();
-        }
+        //     revert PoolRegistrationError();
+        // }
+
+        pool.registerAsCreatorPool();
+        emit CreatorPoolCreated({
+            creator: msg.sender,
+            pool: poolAddr,
+            node: node,
+            creatorCut: creatorCut,
+            poolName: poolName
+        });
     }
 
 

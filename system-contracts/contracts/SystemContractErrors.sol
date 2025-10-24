@@ -176,7 +176,7 @@ error UnsupportedPaymasterFlow();
 error UnsupportedTxType(uint256);
 // 0xc84a0422
 error UpgradeTransactionMustBeFirst();
-// 0x626ade30
+
 error ValueMismatch(uint256 expected, uint256 actual);
 
 //0x1db44c70
@@ -194,7 +194,7 @@ error SelfUnstake();
 // 0x6057e79c
 error CreatorToCreatorSake(address fromCreator, address toCreator);
 
-// 0x5c8e2d7d
+// 0x365ec5b7
 error MultiNodeStakeError();
 
 // 0x6e0ccc07

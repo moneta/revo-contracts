@@ -39,12 +39,17 @@ contract CreatorPool is ReentrancyGuard {
         _;
     }
 
-    modifier onlyNodeContract() {
-        if (msg.sender != NODE_CONTRACT_ADDR) revert Unauthorized(msg.sender);
+    modifier onlyCreator() {
+        if(msg.sender != CREATOR) revert Unauthorized(msg.sender);
         _;
     }
 
-    constructor(address _node, address _factory, address _creator, uint256 _creatorCut, string memory _poolName ) {
+    // modifier onlyNodeContract() {
+    //     if (msg.sender != NODE_CONTRACT_ADDR) revert Unauthorized(msg.sender);
+    //     _;
+    // }
+
+    constructor(address _node, address _factory, address _creator, uint256 _creatorCut, string memory _poolName ) payable {
         if(_node == address(0)) revert InvalidInput();
 
         if(_creator == address(0)) revert InvalidCreator(_creator);
@@ -62,12 +67,13 @@ contract CreatorPool is ReentrancyGuard {
       return cut <= MAX_CREATOR_CUT;
     }
 
-    /// @notice Register this pool by staking ETH to the selected node
-    function registerAsCreatorPool() external payable nonReentrant onlyFactory {
-        if (msg.value <= 0) revert ZeroAmountError();
+    /// @notice Register this pool by staking REVO to the selected node
+    function registerAsCreatorPool() external payable nonReentrant {
+        uint256 amount = address(this).balance;
+        if (amount <= 0) revert ZeroAmountError();
 
-        IBaseToken(BASE_TOKEN_ADDRESS).stake{value: msg.value}(NODE);
-        emit StakeRegisteredToNode(NODE, msg.value);
+        IBaseToken(BASE_TOKEN_ADDRESS).stake{value: 1   }(NODE);
+        emit StakeRegisteredToNode(NODE, amount);
     }
 
     /// @notice Update fan stake (called by L2BaseToken)
@@ -108,20 +114,24 @@ contract CreatorPool is ReentrancyGuard {
         }
     }
 
-    /// @notice Receive ETH reward from NodeContract
-    receive() external payable onlyNodeContract {
-        emit RewardReceived(msg.value);
+    /// @notice Receive REVO reward from NodeContract
+    receive() external payable {
+        if (msg.sender == NODE_CONTRACT_ADDR ) {
+            emit RewardReceived(msg.value);
 
-        uint256 creatorShare = (msg.value * creatorCut) / MAX_CREATOR_CUT;
-        uint256 remainingReward = msg.value - creatorShare;
+            uint256 creatorShare = (msg.value * creatorCut) / MAX_CREATOR_CUT;
+            uint256 remainingReward = msg.value - creatorShare;
 
-        if (remainingReward > 0 && totalStaked > 0) {
-            accRewardPerShare += (remainingReward * PRECISION) / totalStaked;
-        }
+            if (remainingReward > 0 && totalStaked > 0) {
+                accRewardPerShare += (remainingReward * PRECISION) / totalStaked;
+            }
 
-        if (creatorShare > 0) {
-            (bool success, ) = CREATOR.call{value: creatorShare}("");
-            if(!success) revert TransferEthFailed();
+            if (creatorShare > 0) {
+                (bool success, ) = CREATOR.call{value: creatorShare}("");
+                if(!success) revert TransferEthFailed();
+            }
+        } else if (msg.sender != FACTORY) {
+            revert Unauthorized(msg.sender);
         }
     }
 }

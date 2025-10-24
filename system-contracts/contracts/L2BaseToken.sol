@@ -53,11 +53,11 @@ contract L2BaseToken is IBaseToken, SystemContractBase {
 
         uint256 _amount = msg.value;
 
-        if (balance[msg.sender] < _amount) revert InsufficientFunds(_amount, balance[msg.sender]);
-
         if(_amount == 0) revert ZeroAmountError();
 
-        if (INodeContract(NODE_CONTRACT_ADDR).isNode(_to) && creatorPools[msg.sender] != _to) {    
+        if (balance[msg.sender] < _amount) revert InsufficientFunds(_amount, balance[msg.sender]);
+
+        if (INodeContract(NODE_CONTRACT_ADDR).isNode(_to) && creatorPools[msg.sender] != address(0) && creatorPools[msg.sender] != _to) {    
             // don't allow creator stake to different nodes at the same time
             revert MultiNodeStakeError();
         }
@@ -108,7 +108,7 @@ contract L2BaseToken is IBaseToken, SystemContractBase {
             }
 
             stakeCooldownUntil[msg.sender][_to] = block.timestamp + FAN_UNSTAKE_COOLDOWN;
-        } else {
+        } else if (creatorPools[_to] != address(0)) {
             // Fan -> Creator
 
             // Prevent self-loop
@@ -117,7 +117,7 @@ contract L2BaseToken is IBaseToken, SystemContractBase {
             }
 
             // Prevent Creator -> Creator
-            if (creatorPools[msg.sender] != address(0) && creatorPools[_to] != address(0)) {
+            if (creatorPools[msg.sender] != address(0)) {
                 revert CreatorToCreatorSake(msg.sender, _to);
             }
 
@@ -174,17 +174,16 @@ contract L2BaseToken is IBaseToken, SystemContractBase {
                 delete _delegation[msg.sender][_from];
             }
         }
+        
         if (INodeContract(NODE_CONTRACT_ADDR).isNode(_from)) { // creator unstake from node
             if (_delegation[msg.sender][_from] == 0) {
                 INodeContract(NODE_CONTRACT_ADDR).decreaseDelegation(_from, msg.sender, delegated[msg.sender] + _amount);
                 
-                delete stakeCooldownUntil[msg.sender][_from];
-                delete creatorPools[msg.sender];
                 emit RevokeCreatorPool(msg.sender, _from);
             } else {
                 INodeContract(NODE_CONTRACT_ADDR).decreaseDelegation(_from, msg.sender, _amount);
             }
-        } else { // Fan unstake from creator
+        } else if (creatorPools[_from] != address(0)) { // Fan unstake from creator
             unchecked {
                 delegated[_from] -= _amount;
             }
@@ -196,11 +195,11 @@ contract L2BaseToken is IBaseToken, SystemContractBase {
             // Update CreatorPool stake record
             ICreatorPool(_from).updateFanStake(msg.sender, _delegation[msg.sender][_from]);
             emit FanUnstaked(msg.sender, _from, _amount, _delegation[msg.sender][_from]);
+        }
 
-            if (_delegation[msg.sender][_from] == 0) {
-                delete _delegation[msg.sender][_from];
-                delete stakeCooldownUntil[msg.sender][_from]; // Clean up storage
-            }
+        if (_delegation[msg.sender][_from] == 0) {
+            delete _delegation[msg.sender][_from];
+            delete stakeCooldownUntil[msg.sender][_from]; // Clean up storage
         }
 
         emit DelegationChanged({

@@ -36,7 +36,7 @@ export interface SolidityContractDescription extends SystemContractDescription {
   location: SourceLocation;
 }
 
-interface ISystemContracts {
+export interface ISystemContracts {
   [key: string]: YulContractDescription | SolidityContractDescription;
 }
 

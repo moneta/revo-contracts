@@ -96,7 +96,7 @@
     "errors-lint": "ts-node scripts/errors-lint.ts",
     "upgrade-bootloader": "hardhat run scripts/upgrade-bootloader.js --network sepolia",
     "upgrade-node-contract": "hardhat run scripts/upgrade-node-contract.js --network sepolia",
-    "upgrade-revolution": "hardhat run scripts/upgrade-revolution.js --network sepolia"
+    "upgrade-system-contract": "hardhat run scripts/upgrade-system-contract.js --network sepolia"
   },
   "dependencies": {
     "dotenv": "^16.0.3",
