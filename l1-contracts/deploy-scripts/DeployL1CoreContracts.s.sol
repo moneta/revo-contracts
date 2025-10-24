@@ -259,14 +259,6 @@ contract DeployL1CoreContractsScript is Script, DeployL1HelperScript {
         revert("not implemented");
     }
 
-    /// @notice Get all four facet cuts
-    function getChainCreationFacetCuts(
-        StateTransitionDeployedAddresses memory stateTransition
-    ) internal virtual override returns (Diamond.FacetCut[] memory facetCuts) {
-        // We still want to reuse DeployUtils, but this function is not used in this script
-        revert("not implemented");
-    }
-
     /// @notice Get new facet cuts that were added in the upgrade
     function getUpgradeAddedFacetCuts(
         StateTransitionDeployedAddresses memory stateTransition

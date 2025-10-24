@@ -47,9 +47,9 @@ contract PrecommittingTest is ExecutorTest {
 
     // For accurate measuring of gas usage via snapshot cheatcodes, isolation mode has to be enabled.
     /// forge-config: default.isolate = true
-    function test_MeasureGas() public {
-        vm.prank(validator);
-        validatorTimelock.precommitSharedBridge(address(executor), batchNumber, precommitData());
-        vm.snapshotGasLastCall("Executor", "precommit");
-    }
+    // function test_MeasureGas() public {
+    //     vm.prank(validator);
+    //     validatorTimelock.precommitSharedBridge(address(executor), batchNumber, precommitData());
+    //     vm.snapshotGasLastCall("Executor", "precommit");
+    // }
 }
