@@ -6,7 +6,7 @@ pragma solidity ^0.8.20;
 /// @custom:security-contact security@matterlabs.dev
 
 interface IBaseToken {
-    function stake(address _to) external payable;
+    function stake(address _to, uint256 amount) external;
 
     function unstake(address _from) external;
     

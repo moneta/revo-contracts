@@ -35,6 +35,8 @@ contract L2BaseToken is IBaseToken, SystemContractBase {
     mapping(address => uint256) public nodes;
     mapping(address => address) internal creatorPools;
     mapping(address => mapping(address => uint256)) internal _delegation;
+    mapping(address => address[]) public delegatees;
+    mapping(address => mapping(address => uint256)) public delegateeIndex; // for O(1) removal
 
     /// @notice Time until a fan can unstake from a creator after staking
     mapping(address => mapping(address => uint256)) public stakeCooldownUntil;
@@ -44,14 +46,12 @@ contract L2BaseToken is IBaseToken, SystemContractBase {
         _;
     }
 
-    function stake(address _to) external payable override {
+    function stake(address _to, uint256 _amount) external override {
         if(msg.sender == _to) revert SelfStake();
 
         if (INodeContract(NODE_CONTRACT_ADDR).isNode(msg.sender)) {
             revert NodeStakeNotAllowed(msg.sender);
         }
-
-        uint256 _amount = msg.value;
 
         if(_amount == 0) revert ZeroAmountError();
 
@@ -60,6 +60,11 @@ contract L2BaseToken is IBaseToken, SystemContractBase {
         if (INodeContract(NODE_CONTRACT_ADDR).isNode(_to) && creatorPools[msg.sender] != address(0) && creatorPools[msg.sender] != _to) {    
             // don't allow creator stake to different nodes at the same time
             revert MultiNodeStakeError();
+        }
+
+        if (_delegation[msg.sender][_to] == 0) {
+            delegatees[msg.sender].push(_to);
+            delegateeIndex[msg.sender][_to] = delegatees[msg.sender].length - 1;
         }
 
         unchecked {
@@ -101,6 +106,15 @@ contract L2BaseToken is IBaseToken, SystemContractBase {
                         _delegation[lowestDelegator][_to] -= ownLow;
                         stakes[lowestDelegator] -= ownLow;
                         balance[lowestDelegator] += ownLow;
+
+                        if (_delegation[lowestDelegator][_to] == 0) {
+                            uint256 index = delegateeIndex[lowestDelegator][_to];
+                            address last = delegatees[lowestDelegator][delegatees[lowestDelegator].length - 1];
+                            delegatees[lowestDelegator][index] = last;
+                            delegateeIndex[lowestDelegator][last] = index;
+                            delegatees[lowestDelegator].pop();
+                            delete delegateeIndex[lowestDelegator][_to];
+                        }
 
                         emit DelegationChanged({
                             delegator: lowestDelegator,
@@ -184,6 +198,15 @@ contract L2BaseToken is IBaseToken, SystemContractBase {
 
         if (block.timestamp < stakeCooldownUntil[msg.sender][_from]) {
             revert UnstakingCooldown(msg.sender, _from);
+        }
+
+        if (_delegation[msg.sender][_from] == 0) {
+            uint256 index = delegateeIndex[msg.sender][_from];
+            address last = delegatees[msg.sender][delegatees[msg.sender].length - 1];
+            delegatees[msg.sender][index] = last;
+            delegateeIndex[msg.sender][last] = index;
+            delegatees[msg.sender].pop();
+            delete delegateeIndex[msg.sender][_from];
         }
 
         unchecked {
@@ -313,6 +336,10 @@ contract L2BaseToken is IBaseToken, SystemContractBase {
     
     function delegation(address _from, address _to) external view override returns (uint256) {
         return _delegation[_from][_to];
+    }
+
+    function getDelegatees(address _user) external view returns (address[] memory) {
+        return delegatees[_user];
     }
 
     /// @notice Transfer tokens from one address to another.

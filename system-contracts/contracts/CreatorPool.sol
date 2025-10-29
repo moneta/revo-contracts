@@ -64,9 +64,9 @@ contract CreatorPool is ReentrancyGuard {
     function registerAsCreatorPool() external payable nonReentrant {
         uint256 amount = address(this).balance;
         if (amount <= 0) revert ZeroAmountError();
-        if (amount <= 1000000000000000) revert NotEnoughGas();
+        // if (amount <= 1000000000000000) revert NotEnoughGas();
 
-        IBaseToken(BASE_TOKEN_ADDRESS).stake{value: amount - 1000000000000000 }(NODE);
+        IBaseToken(BASE_TOKEN_ADDRESS).stake(NODE, amount);
         emit StakeRegisteredToNode(NODE, amount);
     }
 
