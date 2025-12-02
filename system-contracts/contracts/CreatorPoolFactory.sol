@@ -38,37 +38,6 @@ contract CreatorPoolFactory {
         creatorToPool[msg.sender] = poolAddr;
         allPools.push(poolAddr);
 
-        // Transfer fund to the pool
-        // uint256 stakeAmount = msg.value;
-        // (bool sent, ) = payable(poolAddr).call{value: stakeAmount}("");
-        // if (!sent) {
-        //     // Rollback mappings and emit revert
-        //     delete creatorToPool[msg.sender];
-        //     allPools.pop();
-        //     revert TransferEthFailed();
-        // }
-
-        // Stake to node and register the pool
-        // try pool.registerAsCreatorPool() {
-        //     emit CreatorPoolCreated({
-        //         creator: msg.sender,
-        //         pool: poolAddr,
-        //         node: node,
-        //         creatorCut: creatorCut,
-        //         poolName: poolName
-        //     });
-        // } catch {
-        //     // Rollback pool mapping and list
-        //     delete creatorToPool[msg.sender];
-        //     allPools.pop();
-
-        //     // Attempt to refund ETH
-        //     // (bool refundSuccess, ) = msg.sender.call{value: msg.value}("");
-        //     // if(!refundSuccess) revert TransferEthFailed();
-
-        //     revert PoolRegistrationError();
-        // }
-
         pool.registerAsCreatorPool();
         emit CreatorPoolCreated({
             creator: msg.sender,
